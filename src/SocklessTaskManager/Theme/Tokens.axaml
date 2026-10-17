@@ -89,6 +89,8 @@
   <SolidColorBrush x:Key="SlSeries2" Color="{StaticResource SpVerdigris}" />
   <SolidColorBrush x:Key="SlSeries3" Color="{StaticResource SpBrass}" />
   <SolidColorBrush x:Key="SlSeries4" Color="{StaticResource SpGaslight}" />
+  <!-- Unused capacity in a part-to-whole chart (free memory). Steel: neutral, not a status. -->
+  <SolidColorBrush x:Key="SlSeriesIdle" Color="{StaticResource SpSteel}" />
   <SolidColorBrush x:Key="SlChartGrid" Color="{StaticResource SpRivetLine}" Opacity="0.25" />
   <SolidColorBrush x:Key="SlChartPlot" Color="{StaticResource SpIron}" />
 

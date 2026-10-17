@@ -31,6 +31,7 @@ src/SocklessTaskManager/
     Performance/        a top-level feature (one sidebar entry)
       PerformanceModule.cs   the list of device scanners for this feature
       Cpu/ Memory/ Disk/ Network/ Gpu/   one sub-slice per device kind
+    Memory/             a top-level feature: drill-down of physical memory (BreakdownTree.cs maps paths to levels)
 ```
 
 A slice owns everything it needs: native calls, sensor, view model and view. Slices don't reference each other. Code moves into `Core/` only when a second slice needs it (PDH and `GetPerformanceInfo` are there for that reason).

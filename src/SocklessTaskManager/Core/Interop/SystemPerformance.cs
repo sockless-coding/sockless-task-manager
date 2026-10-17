@@ -4,6 +4,7 @@ namespace Sockless.TaskManager.Core.Interop;
 
 /// <summary>System-wide counters from <c>GetPerformanceInfo</c>, used by more than one slice.</summary>
 public readonly partial record struct SystemPerformance(
+    ulong PhysicalTotalBytes,
     ulong CommitTotalBytes,
     ulong CommitLimitBytes,
     ulong SystemCacheBytes,
@@ -21,6 +22,7 @@ public readonly partial record struct SystemPerformance(
 
         var page = (ulong)info.PageSize;
         return new SystemPerformance(
+            info.PhysicalTotal * page,
             info.CommitTotal * page,
             info.CommitLimit * page,
             info.SystemCache * page,

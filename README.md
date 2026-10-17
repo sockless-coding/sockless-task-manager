@@ -16,7 +16,14 @@ The **Performance** page shows live graphs and figures for each device, the way 
 
 Data is sampled once a second. Pause from the top bar. Disks and adapters that are plugged in or removed appear and disappear within a few seconds.
 
-All data comes from documented Windows APIs (performance counters via PDH, `GlobalMemoryStatusEx`, SMBIOS, storage IOCTLs, DXGI). No WMI, no admin rights.
+The **Memory** page shows what the RAM is holding and lets you drill into each part:
+
+- **In use**: processes (grouped by name, then each process's private data, EXE/DLL images and mapped files), compressed memory, files shared between processes, kernel pools by tag (and the drivers that use each tag), driver code, and the system file cache.
+- **Modified**, **Standby** (by priority) and **Free** (zeroed or not).
+
+It only reads what the level on screen needs, and only while the page is visible. Address-space and driver-file scans run once when opened, with a Refresh button.
+
+Data comes from Windows APIs: performance counters via PDH, `GlobalMemoryStatusEx`, SMBIOS, storage IOCTLs and DXGI, plus `NtQuerySystemInformation` and process working-set queries for the Memory page. No WMI, no admin rights; run as administrator only to inspect elevated processes' address spaces.
 
 ## Footprint
 

@@ -1,0 +1,132 @@
+<!--
+  Memory page: breadcrumbs, the current level's title, explanation and total, a composition
+  bar at the top level, then a table of its parts that fills the rest of the page. Only the
+  table scrolls, and it is virtualized, so lists of thousands (pool tags, files) are complete.
+  Rows that can be opened are buttons with a chevron; the rest are inert.
+-->
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:ctl="using:Sockless.TaskManager.Controls"
+             xmlns:mem="using:Sockless.TaskManager.Features.Memory"
+             x:Class="Sockless.TaskManager.Features.Memory.MemoryView"
+             x:DataType="mem:MemoryBreakdown">
+  <Grid RowDefinitions="Auto,*" Margin="{StaticResource SlContentPadding}">
+    <StackPanel Spacing="10" Margin="0,0,0,16">
+      <ItemsControl ItemsSource="{Binding Crumbs}" AutomationProperties.Name="Breadcrumb"
+                    IsVisible="{Binding HasCrumbs}">
+        <ItemsControl.ItemsPanel>
+          <ItemsPanelTemplate>
+            <WrapPanel />
+          </ItemsPanelTemplate>
+        </ItemsControl.ItemsPanel>
+        <ItemsControl.ItemTemplate>
+          <DataTemplate x:DataType="mem:BreakdownCrumb">
+            <StackPanel Orientation="Horizontal">
+              <TextBlock Text="/" Margin="8,0" Classes="mono" FontSize="{StaticResource SlTextSmall}"
+                         Foreground="{StaticResource SlBorderAccent}" IsVisible="{Binding ShowSeparator}" />
+              <Button Theme="{StaticResource LinkButton}" Command="{Binding NavigateCommand}"
+                      IsVisible="{Binding IsLink}" AutomationProperties.Name="{Binding Name}">
+                <TextBlock Classes="mono" FontSize="{StaticResource SlTextSmall}" Text="{Binding Name}" />
+              </Button>
+              <TextBlock Classes="mono secondary" FontSize="{StaticResource SlTextSmall}" Text="{Binding Name}"
+                         IsVisible="{Binding IsCurrent}" />
+            </StackPanel>
+          </DataTemplate>
+        </ItemsControl.ItemTemplate>
+      </ItemsControl>
+
+      <Grid ColumnDefinitions="*,Auto" ColumnSpacing="24">
+        <StackPanel Spacing="4">
+          <TextBlock Classes="page-title" Text="{Binding Title}" TextTrimming="CharacterEllipsis" />
+          <TextBlock Classes="secondary" Text="{Binding Description}" TextWrapping="Wrap" MaxWidth="900"
+                     HorizontalAlignment="Left"
+                     IsVisible="{Binding Description, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+        </StackPanel>
+        <TextBlock Grid.Column="1" Classes="readout" Text="{Binding TotalText}" VerticalAlignment="Top" Margin="0,6,0,0" />
+      </Grid>
+
+      <mem:CompositionBar Height="20" Margin="0,4,0,0" Segments="{Binding Composition}"
+                          Background="{StaticResource SlChartPlot}" BorderBrush="{StaticResource SlBorder}"
+                          IsVisible="{Binding ShowComposition}" />
+
+      <Grid ColumnDefinitions="*,Auto" ColumnSpacing="16" IsVisible="{Binding HasStatus}">
+        <TextBlock Classes="caption" Text="{Binding Status}" TextWrapping="Wrap" VerticalAlignment="Center" />
+        <Button Grid.Column="1" Theme="{StaticResource SoftButton}" Command="{Binding RefreshCommand}"
+                IsVisible="{Binding CanRefresh}" IsEnabled="{Binding !IsBusy}"
+                ToolTip.Tip="Read this snapshot again">
+          <StackPanel Orientation="Horizontal" Spacing="6">
+            <ctl:Icon Width="14" Height="14" Data="{StaticResource IconRefresh}" />
+            <TextBlock Text="Refresh" />
+          </StackPanel>
+        </Button>
+      </Grid>
+    </StackPanel>
+
+    <Border Grid.Row="1" Classes="card" Padding="0" ClipToBounds="True">
+      <Grid RowDefinitions="Auto,*">
+        <Border Classes="table-header">
+          <Grid ColumnDefinitions="*,180,96,16" ColumnSpacing="16">
+            <TextBlock Text="Name" />
+            <TextBlock Grid.Column="1" Text="Share" IsVisible="{Binding ShowShare}" />
+            <TextBlock Grid.Column="2" Text="{Binding SizeHeader}" HorizontalAlignment="Right" />
+          </Grid>
+        </Border>
+
+        <ItemsControl Grid.Row="1" ItemsSource="{Binding Rows}" AutomationProperties.Name="{Binding Title}">
+          <ItemsControl.Template>
+            <ControlTemplate>
+              <ScrollViewer HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
+                <ItemsPresenter Name="PART_ItemsPresenter" ItemsPanel="{TemplateBinding ItemsPanel}" />
+              </ScrollViewer>
+            </ControlTemplate>
+          </ItemsControl.Template>
+          <ItemsControl.ItemsPanel>
+            <ItemsPanelTemplate>
+              <VirtualizingStackPanel />
+            </ItemsPanelTemplate>
+          </ItemsControl.ItemsPanel>
+          <ItemsControl.ItemTemplate>
+            <DataTemplate x:DataType="mem:BreakdownRow">
+              <Button Theme="{StaticResource TableRow}"
+                      Command="{Binding OpenCommand}" IsEnabled="{Binding CanOpen}"
+                      ToolTip.Tip="{Binding ToolTip}"
+                      AutomationProperties.Name="{Binding AccessibleName}">
+                <Grid ColumnDefinitions="*,180,96,16" ColumnSpacing="16">
+                  <Grid ColumnDefinitions="Auto,*">
+                    <Border Width="10" Height="10" Margin="0,0,10,0" VerticalAlignment="Center"
+                            CornerRadius="{StaticResource SlRadiusXs}" Background="{Binding Series}"
+                            IsVisible="{Binding HasSwatch}" />
+                    <StackPanel Grid.Column="1" Spacing="1" VerticalAlignment="Center">
+                      <TextBlock Text="{Binding Name}" Classes.mono="{Binding Mono}" TextTrimming="CharacterEllipsis" />
+                      <TextBlock Classes="caption" Text="{Binding Note}" TextTrimming="CharacterEllipsis"
+                                 IsVisible="{Binding HasNote}" />
+                    </StackPanel>
+                  </Grid>
+
+                  <Grid Grid.Column="1" ColumnDefinitions="*,36" ColumnSpacing="8"
+                        IsVisible="{Binding $parent[ItemsControl].((mem:MemoryBreakdown)DataContext).ShowShare}">
+                    <mem:ShareBar Height="6" VerticalAlignment="Center"
+                                  Value="{Binding Share}" Fill="{Binding Series}"
+                                  Background="{StaticResource SlRaised}" />
+                    <TextBlock Grid.Column="1" Classes="caption mono" Text="{Binding ShareText}"
+                               HorizontalAlignment="Right" VerticalAlignment="Center" />
+                  </Grid>
+
+                  <TextBlock Grid.Column="2" Classes="mono" FontSize="{StaticResource SlTextSmall}"
+                             Text="{Binding SizeText}" HorizontalAlignment="Right" VerticalAlignment="Center" />
+
+                  <ctl:Icon Grid.Column="3" Width="16" Height="16" VerticalAlignment="Center"
+                            Data="{StaticResource IconChevronRight}" Foreground="{StaticResource SlAccent}"
+                            IsVisible="{Binding CanOpen}" />
+                </Grid>
+              </Button>
+            </DataTemplate>
+          </ItemsControl.ItemTemplate>
+        </ItemsControl>
+
+        <TextBlock Grid.Row="1" Classes="caption" Margin="24" HorizontalAlignment="Center" VerticalAlignment="Top"
+                   Text="Nothing to list here right now." IsVisible="{Binding IsEmpty}" />
+      </Grid>
+    </Border>
+  </Grid>
+</UserControl>

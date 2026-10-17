@@ -2,6 +2,7 @@ using Avalonia;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Markup.Xaml;
 using Sockless.TaskManager.Core;
+using Sockless.TaskManager.Features.Memory;
 using Sockless.TaskManager.Features.Performance;
 using Sockless.TaskManager.Shell;
 
@@ -22,6 +23,7 @@ public sealed class App : Application
             Feature[] features =
             [
                 PerformanceModule.Create(clock),
+                new MemoryFeature(clock),
             ];
 
             var shell = new ShellViewModel(clock, features);
