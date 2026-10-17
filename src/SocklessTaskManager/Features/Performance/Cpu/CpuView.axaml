@@ -1,0 +1,44 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:core="using:Sockless.TaskManager.Core"
+             xmlns:ctl="using:Sockless.TaskManager.Controls"
+             xmlns:perf="using:Sockless.TaskManager.Features.Performance"
+             xmlns:cpu="using:Sockless.TaskManager.Features.Performance.Cpu"
+             x:Class="Sockless.TaskManager.Features.Performance.Cpu.CpuView"
+             x:DataType="cpu:CpuDevice">
+  <StackPanel>
+    <perf:DeviceHeader />
+
+    <Border Classes="card">
+      <StackPanel Spacing="12">
+        <ToggleButton Theme="{StaticResource SoftToggle}" HorizontalAlignment="Right"
+                      IsChecked="{Binding ShowLogicalProcessors}"
+                      Content="Logical processors"
+                      ToolTip.Tip="Show one graph per logical processor" />
+
+        <ctl:GraphFrame Caption="% Utilization over 60 seconds" Scale="100%" Height="280"
+                        IsVisible="{Binding !ShowLogicalProcessors}">
+          <ctl:HistoryGraph Series="{Binding Utilization}" Stroke="{StaticResource SlSeries1}" />
+        </ctl:GraphFrame>
+
+        <ctl:GraphFrame Caption="% Utilization per logical processor" Scale="100%" Height="280"
+                        IsVisible="{Binding ShowLogicalProcessors}">
+          <ItemsControl ItemsSource="{Binding LogicalProcessors}">
+            <ItemsControl.ItemsPanel>
+              <ItemsPanelTemplate>
+                <UniformGrid ColumnSpacing="4" RowSpacing="4" />
+              </ItemsPanelTemplate>
+            </ItemsControl.ItemsPanel>
+            <ItemsControl.ItemTemplate>
+              <DataTemplate x:DataType="core:History">
+                <ctl:HistoryGraph Series="{Binding}" GridDivisions="4" Stroke="{StaticResource SlSeries1}" />
+              </DataTemplate>
+            </ItemsControl.ItemTemplate>
+          </ItemsControl>
+        </ctl:GraphFrame>
+      </StackPanel>
+    </Border>
+
+    <perf:ReadoutPanel />
+  </StackPanel>
+</UserControl>

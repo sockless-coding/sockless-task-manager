@@ -1,0 +1,20 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:ctl="using:Sockless.TaskManager.Controls"
+             xmlns:perf="using:Sockless.TaskManager.Features.Performance"
+             xmlns:mem="using:Sockless.TaskManager.Features.Performance.Memory"
+             x:Class="Sockless.TaskManager.Features.Performance.Memory.MemoryView"
+             x:DataType="mem:MemoryDevice">
+  <StackPanel>
+    <perf:DeviceHeader />
+
+    <Border Classes="card">
+      <ctl:GraphFrame Caption="Memory usage over 60 seconds" Scale="{Binding Scale}" Height="300">
+        <ctl:HistoryGraph Series="{Binding InUse}" Maximum="{Binding MaximumGb}"
+                          Stroke="{StaticResource SlSeries3}" />
+      </ctl:GraphFrame>
+    </Border>
+
+    <perf:ReadoutPanel />
+  </StackPanel>
+</UserControl>

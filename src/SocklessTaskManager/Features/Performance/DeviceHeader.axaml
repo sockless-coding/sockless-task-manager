@@ -1,0 +1,14 @@
+<!-- Detail page header: device title in the page-title style, hardware model on the right. -->
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:perf="using:Sockless.TaskManager.Features.Performance"
+             x:Class="Sockless.TaskManager.Features.Performance.DeviceHeader"
+             x:DataType="perf:PerformanceDevice">
+  <Grid ColumnDefinitions="Auto,*" Margin="0,0,0,16">
+    <TextBlock Classes="page-title" Text="{Binding Title}" VerticalAlignment="Bottom" />
+    <TextBlock Grid.Column="1" Classes="secondary" Text="{Binding Model}" Margin="24,0,0,6"
+               FontSize="{StaticResource SlTextSection}"
+               HorizontalAlignment="Right" VerticalAlignment="Bottom"
+               TextTrimming="CharacterEllipsis" />
+  </Grid>
+</UserControl>

@@ -1,0 +1,109 @@
+<!--
+  The web app shell (surfaces/web-app.md → Shell): sidebar with brand block and nav,
+  a 64px top bar with the page title and global status, and a content region that is
+  the only thing that scrolls. The top bar doubles as the window's title bar.
+-->
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:core="using:Sockless.TaskManager.Core"
+        xmlns:ctl="using:Sockless.TaskManager.Controls"
+        xmlns:shell="using:Sockless.TaskManager.Shell"
+        xmlns:chrome="using:Avalonia.Controls.Chrome"
+        x:Class="Sockless.TaskManager.Shell.MainWindow"
+        x:DataType="shell:ShellViewModel"
+        Title="Sockless Task Manager"
+        Icon="/Assets/app.ico"
+        Width="1200" Height="780" MinWidth="900" MinHeight="560"
+        WindowStartupLocation="CenterScreen"
+        ExtendClientAreaToDecorationsHint="True"
+        ExtendClientAreaTitleBarHeightHint="64">
+
+  <Grid ColumnDefinitions="Auto,*">
+
+    <!-- ========== Sidebar ========== -->
+    <Border Grid.Column="0" Width="{Binding SidebarWidth}"
+            Background="{StaticResource SlSurface}"
+            BorderBrush="{StaticResource SlBorderFaint}" BorderThickness="0,0,1,0">
+      <DockPanel>
+        <!-- Brand block, 64px so its divider lines up with the top bar's. -->
+        <Border DockPanel.Dock="Top" Height="64" Padding="14,0"
+                BorderBrush="{StaticResource SlBorderFaint}" BorderThickness="0,0,0,1"
+                chrome:WindowDecorationProperties.ElementRole="TitleBar">
+          <StackPanel Orientation="Horizontal" Spacing="12" VerticalAlignment="Center">
+            <Border Width="36" Height="36" CornerRadius="{StaticResource SlRadiusMd}"
+                    Background="{StaticResource SlCard}"
+                    BorderBrush="{StaticResource SlAccentTint30}" BorderThickness="1"
+                    BoxShadow="{StaticResource SlShadowGlow}">
+              <ctl:Icon Width="22" Height="22" Filled="True" ViewBoxSize="100"
+                        Data="{StaticResource GearMark}" Foreground="{StaticResource SlAccentLine}"
+                        HorizontalAlignment="Center" VerticalAlignment="Center" />
+            </Border>
+            <StackPanel VerticalAlignment="Center" IsVisible="{Binding IsSidebarOpen}">
+              <TextBlock Text="Sockless" FontFamily="{StaticResource SlFontHeading}" FontWeight="SemiBold"
+                         FontSize="{StaticResource SlTextSection}" LetterSpacing="0.4"
+                         Foreground="{StaticResource SlAccent}" />
+              <ctl:CapsText Classes="label" Value="Task manager" />
+            </StackPanel>
+          </StackPanel>
+        </Border>
+
+        <ListBox Theme="{StaticResource PlainList}" Margin="8,12"
+                 ItemsSource="{Binding Features}"
+                 SelectedItem="{Binding SelectedFeature}"
+                 AutomationProperties.Name="Main navigation">
+          <ListBox.ItemTemplate>
+            <DataTemplate x:DataType="core:Feature">
+              <StackPanel Orientation="Horizontal" Spacing="12" ToolTip.Tip="{Binding Title}">
+                <ctl:Icon Width="20" Height="20" Data="{Binding Icon}" />
+                <TextBlock Text="{Binding Title}" VerticalAlignment="Center"
+                           IsVisible="{Binding $parent[Window].((shell:ShellViewModel)DataContext).IsSidebarOpen}" />
+              </StackPanel>
+            </DataTemplate>
+          </ListBox.ItemTemplate>
+        </ListBox>
+      </DockPanel>
+    </Border>
+
+    <!-- ========== Top bar + content ========== -->
+    <DockPanel Grid.Column="1">
+      <Border DockPanel.Dock="Top" Height="64" Padding="12,0,0,0"
+              Background="{StaticResource SlSurface}"
+              BorderBrush="{StaticResource SlBorderFaint}" BorderThickness="0,0,0,1"
+              chrome:WindowDecorationProperties.ElementRole="TitleBar">
+        <!-- Right margin leaves room for the system caption buttons. -->
+        <Grid ColumnDefinitions="Auto,*,Auto" Margin="0,0,138,0">
+          <ToggleButton Theme="{StaticResource ChromeButton}" VerticalAlignment="Center"
+                        IsChecked="{Binding IsSidebarOpen}"
+                        AutomationProperties.Name="Show navigation labels"
+                        ToolTip.Tip="Collapse or expand the sidebar"
+                        chrome:WindowDecorationProperties.ElementRole="User">
+            <ctl:Icon Width="20" Height="20" Data="{StaticResource IconMenu}" />
+          </ToggleButton>
+
+          <TextBlock Grid.Column="1" Classes="top-bar-title" Margin="12,0"
+                     VerticalAlignment="Center" Text="{Binding SelectedFeature.Title}" />
+
+          <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="12" VerticalAlignment="Center" Margin="0,0,16,0">
+            <Border Classes="live" Classes.paused="{Binding IsPaused}">
+              <StackPanel Orientation="Horizontal" Spacing="8">
+                <Ellipse Classes="dot" Classes.pulse="{Binding Pulse}"
+                         Fill="{Binding $parent[Border].(TextElement.Foreground)}" VerticalAlignment="Center" />
+                <TextBlock Text="{Binding LiveText}" FontSize="{StaticResource SlTextSmall}"
+                           FontWeight="Medium" VerticalAlignment="Center" />
+              </StackPanel>
+            </Border>
+            <Button Theme="{StaticResource SoftButton}" Command="{Binding TogglePauseCommand}"
+                    chrome:WindowDecorationProperties.ElementRole="User">
+              <StackPanel Orientation="Horizontal" Spacing="6">
+                <ctl:Icon Width="16" Height="16" Data="{Binding PauseIcon}" />
+                <TextBlock Text="{Binding PauseText}" VerticalAlignment="Center" />
+              </StackPanel>
+            </Button>
+          </StackPanel>
+        </Grid>
+      </Border>
+
+      <ContentControl Content="{Binding SelectedFeature.View}" />
+    </DockPanel>
+  </Grid>
+</Window>

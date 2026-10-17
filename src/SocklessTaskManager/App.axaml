@@ -1,0 +1,20 @@
+<Application xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             x:Class="Sockless.TaskManager.App"
+             RequestedThemeVariant="Dark">
+
+  <Application.Resources>
+    <ResourceDictionary>
+      <ResourceDictionary.MergedDictionaries>
+        <ResourceInclude Source="avares://SocklessTaskManager/Theme/Tokens.axaml" />
+        <ResourceInclude Source="avares://SocklessTaskManager/Theme/Icons.axaml" />
+      </ResourceDictionary.MergedDictionaries>
+    </ResourceDictionary>
+  </Application.Resources>
+
+  <Application.Styles>
+    <!-- Fluent supplies scrollbars and other primitives; Sockless is dark only. -->
+    <FluentTheme />
+    <StyleInclude Source="avares://SocklessTaskManager/Theme/Controls.axaml" />
+  </Application.Styles>
+</Application>

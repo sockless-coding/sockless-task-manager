@@ -1,0 +1,293 @@
+<!--
+  Workshop components (components.md, surfaces/web-app.md) as Avalonia styles.
+  Everything here consumes Sl* tokens from Tokens.axaml; no raw colours.
+-->
+<Styles xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:ctl="using:Sockless.TaskManager.Controls"
+        xmlns:chrome="using:Avalonia.Controls.Chrome">
+
+  <Styles.Resources>
+    <ResourceDictionary>
+
+      <!-- Focus ring: 2px copper-light with a 2px offset (accessibility.md → Focus). -->
+      <FocusAdornerTemplate x:Key="SlFocusAdorner">
+        <Border Margin="-4" BorderThickness="2" CornerRadius="{StaticResource SlRadiusSm}"
+                BorderBrush="{StaticResource SlFocus}" />
+      </FocusAdornerTemplate>
+
+      <!-- Sidebar nav item and device list item: accent text, 10% fill, 2px accent left border when active. -->
+      <ControlTheme x:Key="NavItem" TargetType="ListBoxItem">
+        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="Foreground" Value="{StaticResource SlTextSecondary}" />
+        <Setter Property="BorderBrush" Value="Transparent" />
+        <Setter Property="BorderThickness" Value="2,0,0,0" />
+        <Setter Property="CornerRadius" Value="{StaticResource SlRadiusSm}" />
+        <Setter Property="Padding" Value="12,8" />
+        <Setter Property="Margin" Value="0,1" />
+        <Setter Property="Cursor" Value="Hand" />
+        <Setter Property="FocusAdorner" Value="{StaticResource SlFocusAdorner}" />
+        <Setter Property="Template">
+          <ControlTemplate>
+            <Border Name="PART_Plate"
+                    Background="{TemplateBinding Background}"
+                    BorderBrush="{TemplateBinding BorderBrush}"
+                    BorderThickness="{TemplateBinding BorderThickness}"
+                    CornerRadius="{TemplateBinding CornerRadius}">
+              <ContentPresenter Name="PART_ContentPresenter"
+                                Padding="{TemplateBinding Padding}"
+                                Content="{TemplateBinding Content}"
+                                ContentTemplate="{TemplateBinding ContentTemplate}"
+                                Foreground="{TemplateBinding Foreground}"
+                                HorizontalContentAlignment="Stretch" />
+            </Border>
+          </ControlTemplate>
+        </Setter>
+        <Style Selector="^:pointerover">
+          <Setter Property="Foreground" Value="{StaticResource SlAccent}" />
+          <Setter Property="Background" Value="{StaticResource SlAccentTint5}" />
+        </Style>
+        <Style Selector="^:selected">
+          <Setter Property="Foreground" Value="{StaticResource SlAccent}" />
+          <Setter Property="Background" Value="{StaticResource SlAccentTint10}" />
+          <Setter Property="BorderBrush" Value="{StaticResource SlAccent}" />
+          <Setter Property="FontWeight" Value="SemiBold" />
+        </Style>
+      </ControlTheme>
+
+      <ControlTheme x:Key="PlainList" TargetType="ListBox">
+        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="BorderThickness" Value="0" />
+        <Setter Property="ItemContainerTheme" Value="{StaticResource NavItem}" />
+        <Setter Property="Template">
+          <ControlTemplate>
+            <ScrollViewer HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
+              <ItemsPresenter Name="PART_ItemsPresenter" ItemsPanel="{TemplateBinding ItemsPanel}" />
+            </ScrollViewer>
+          </ControlTemplate>
+        </Setter>
+      </ControlTheme>
+
+      <!-- Soft button (components.md → Buttons): accent at 10%, accent text, 20% on hover. -->
+      <ControlTheme x:Key="SoftButton" TargetType="Button">
+        <Setter Property="Foreground" Value="{StaticResource SlAccent}" />
+        <Setter Property="Background" Value="{StaticResource SlAccentTint10}" />
+        <Setter Property="BorderBrush" Value="Transparent" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="CornerRadius" Value="{StaticResource SlRadiusSm}" />
+        <Setter Property="Padding" Value="12,6" />
+        <Setter Property="FontSize" Value="{StaticResource SlTextSmall}" />
+        <Setter Property="FontWeight" Value="Medium" />
+        <Setter Property="Cursor" Value="Hand" />
+        <Setter Property="FocusAdorner" Value="{StaticResource SlFocusAdorner}" />
+        <Setter Property="Template">
+          <ControlTemplate>
+            <ContentPresenter Name="PART_ContentPresenter"
+                              Background="{TemplateBinding Background}"
+                              BorderBrush="{TemplateBinding BorderBrush}"
+                              BorderThickness="{TemplateBinding BorderThickness}"
+                              CornerRadius="{TemplateBinding CornerRadius}"
+                              Padding="{TemplateBinding Padding}"
+                              Content="{TemplateBinding Content}"
+                              Foreground="{TemplateBinding Foreground}"
+                              HorizontalContentAlignment="Center"
+                              VerticalContentAlignment="Center" />
+          </ControlTemplate>
+        </Setter>
+        <Style Selector="^:pointerover">
+          <Setter Property="Background" Value="{StaticResource SlAccentTint20}" />
+        </Style>
+      </ControlTheme>
+
+      <!-- Soft toggle: as the soft button; when on, a 30% accent rim so state isn't fill alone. -->
+      <ControlTheme x:Key="SoftToggle" TargetType="ToggleButton">
+        <Setter Property="Foreground" Value="{StaticResource SlAccent}" />
+        <Setter Property="Background" Value="{StaticResource SlAccentTint10}" />
+        <Setter Property="BorderBrush" Value="Transparent" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="CornerRadius" Value="{StaticResource SlRadiusSm}" />
+        <Setter Property="Padding" Value="12,6" />
+        <Setter Property="FontSize" Value="{StaticResource SlTextSmall}" />
+        <Setter Property="FontWeight" Value="Medium" />
+        <Setter Property="Cursor" Value="Hand" />
+        <Setter Property="FocusAdorner" Value="{StaticResource SlFocusAdorner}" />
+        <Setter Property="Template">
+          <ControlTemplate>
+            <ContentPresenter Name="PART_ContentPresenter"
+                              Background="{TemplateBinding Background}"
+                              BorderBrush="{TemplateBinding BorderBrush}"
+                              BorderThickness="{TemplateBinding BorderThickness}"
+                              CornerRadius="{TemplateBinding CornerRadius}"
+                              Padding="{TemplateBinding Padding}"
+                              Content="{TemplateBinding Content}"
+                              Foreground="{TemplateBinding Foreground}"
+                              HorizontalContentAlignment="Center"
+                              VerticalContentAlignment="Center" />
+          </ControlTemplate>
+        </Setter>
+        <Style Selector="^:pointerover">
+          <Setter Property="Background" Value="{StaticResource SlAccentTint20}" />
+        </Style>
+        <Style Selector="^:checked">
+          <Setter Property="Background" Value="{StaticResource SlAccentTint20}" />
+          <Setter Property="BorderBrush" Value="{StaticResource SlAccentTint30}" />
+        </Style>
+      </ControlTheme>
+
+      <!-- Icon-only chrome button (sidebar toggle). Needs an AutomationProperties.Name. -->
+      <ControlTheme x:Key="ChromeButton" TargetType="ToggleButton">
+        <Setter Property="Foreground" Value="{StaticResource SlTextSecondary}" />
+        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="CornerRadius" Value="{StaticResource SlRadiusSm}" />
+        <Setter Property="Padding" Value="8" />
+        <Setter Property="Cursor" Value="Hand" />
+        <Setter Property="FocusAdorner" Value="{StaticResource SlFocusAdorner}" />
+        <Setter Property="Template">
+          <ControlTemplate>
+            <ContentPresenter Name="PART_ContentPresenter"
+                              Background="{TemplateBinding Background}"
+                              CornerRadius="{TemplateBinding CornerRadius}"
+                              Padding="{TemplateBinding Padding}"
+                              Content="{TemplateBinding Content}"
+                              Foreground="{TemplateBinding Foreground}" />
+          </ControlTemplate>
+        </Setter>
+        <Style Selector="^:pointerover">
+          <Setter Property="Foreground" Value="{StaticResource SlAccent}" />
+          <Setter Property="Background" Value="{StaticResource SlAccentTint10}" />
+        </Style>
+      </ControlTheme>
+
+      <ControlTheme x:Key="{x:Type ctl:GraphFrame}" TargetType="ctl:GraphFrame">
+        <Setter Property="Template">
+          <ControlTemplate>
+            <Grid RowDefinitions="Auto,*,Auto">
+              <Grid ColumnDefinitions="*,Auto" Margin="0,0,0,6">
+                <TextBlock Classes="caption" Text="{TemplateBinding Caption}" TextTrimming="CharacterEllipsis" />
+                <TextBlock Grid.Column="1" Classes="caption mono" Text="{TemplateBinding Scale}" />
+              </Grid>
+              <ContentPresenter Grid.Row="1" Content="{TemplateBinding Content}" />
+              <Grid Grid.Row="2" ColumnDefinitions="*,Auto" Margin="0,6,0,0" IsVisible="{TemplateBinding ShowFooter}">
+                <TextBlock Classes="caption" Text="{TemplateBinding Span}" />
+                <TextBlock Grid.Column="1" Classes="caption mono" Text="0" />
+              </Grid>
+            </Grid>
+          </ControlTemplate>
+        </Setter>
+      </ControlTheme>
+    </ResourceDictionary>
+  </Styles.Resources>
+
+  <!-- ========== Base ========== -->
+  <Style Selector="TopLevel">
+    <Setter Property="FontFamily" Value="{StaticResource SlFontBody}" />
+    <Setter Property="FontSize" Value="{StaticResource SlTextBody}" />
+    <Setter Property="Foreground" Value="{StaticResource SlText}" />
+    <Setter Property="Background" Value="{StaticResource SlBg}" />
+  </Style>
+
+  <!-- ========== Type ========== -->
+  <!-- Web app page title: 1.875rem bold, accent, Oswald, title case with 0.02em tracking. -->
+  <Style Selector="TextBlock.page-title">
+    <Setter Property="FontFamily" Value="{StaticResource SlFontHeading}" />
+    <Setter Property="FontSize" Value="{StaticResource SlTextPageTitle}" />
+    <Setter Property="FontWeight" Value="Bold" />
+    <Setter Property="LetterSpacing" Value="0.6" />
+    <Setter Property="Foreground" Value="{StaticResource SlAccent}" />
+  </Style>
+  <Style Selector="TextBlock.top-bar-title">
+    <Setter Property="FontFamily" Value="{StaticResource SlFontHeading}" />
+    <Setter Property="FontSize" Value="{StaticResource SlTextTopBar}" />
+    <Setter Property="FontWeight" Value="SemiBold" />
+    <Setter Property="LetterSpacing" Value="0.4" />
+    <Setter Property="Foreground" Value="{StaticResource SlTextHeading}" />
+  </Style>
+  <Style Selector="TextBlock.secondary">
+    <Setter Property="Foreground" Value="{StaticResource SlTextSecondary}" />
+  </Style>
+  <!-- Smallest label: 11px uppercase (via CapsText), tracked 0.1em, Oswald, secondary. -->
+  <Style Selector="TextBlock.label">
+    <Setter Property="FontFamily" Value="{StaticResource SlFontHeading}" />
+    <Setter Property="FontSize" Value="{StaticResource SlTextLabel}" />
+    <Setter Property="LetterSpacing" Value="1.1" />
+    <Setter Property="Foreground" Value="{StaticResource SlTextSecondary}" />
+  </Style>
+  <Style Selector="TextBlock.caption">
+    <Setter Property="FontSize" Value="{StaticResource SlTextSmall}" />
+    <Setter Property="Foreground" Value="{StaticResource SlTextSecondary}" />
+  </Style>
+  <Style Selector="TextBlock.mono">
+    <Setter Property="FontFamily" Value="{StaticResource SlFontMono}" />
+  </Style>
+  <!-- Instrument readout: Roboto Mono, large, ivory. -->
+  <Style Selector="TextBlock.readout">
+    <Setter Property="FontFamily" Value="{StaticResource SlFontMono}" />
+    <Setter Property="FontSize" Value="{StaticResource SlTextReadout}" />
+    <Setter Property="Foreground" Value="{StaticResource SlTextHeading}" />
+  </Style>
+
+  <!-- ========== Surfaces ========== -->
+  <!-- Web app card: card fill, 1px border, card radius; no top plate, no lift (web-app.md). -->
+  <Style Selector="Border.card">
+    <Setter Property="Background" Value="{StaticResource SlCard}" />
+    <Setter Property="BorderBrush" Value="{StaticResource SlBorder}" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="CornerRadius" Value="{StaticResource SlRadiusMd}" />
+    <Setter Property="Padding" Value="{StaticResource SlCardPadding}" />
+  </Style>
+
+  <Style Selector="ctl|HistoryGraph">
+    <Setter Property="GridBrush" Value="{StaticResource SlChartGrid}" />
+    <Setter Property="Background" Value="{StaticResource SlChartPlot}" />
+  </Style>
+
+  <!-- ========== Live indicator (components.md → Badges) ========== -->
+  <!-- The only pill in Workshop: an 8px dot plus a word, so state is never colour alone. -->
+  <Style Selector="Border.live">
+    <Setter Property="CornerRadius" Value="{StaticResource SlRadiusPill}" />
+    <Setter Property="Padding" Value="10,4" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="Background" Value="{StaticResource SlSuccessTint10}" />
+    <Setter Property="BorderBrush" Value="{StaticResource SlSuccessTint25}" />
+    <Setter Property="TextElement.Foreground" Value="{StaticResource SlSuccess}" />
+  </Style>
+  <Style Selector="Border.live.paused">
+    <Setter Property="Background" Value="{StaticResource SlWarningTint10}" />
+    <Setter Property="BorderBrush" Value="{StaticResource SlWarningTint25}" />
+    <Setter Property="TextElement.Foreground" Value="{StaticResource SlWarning}" />
+  </Style>
+  <Style Selector="Ellipse.dot">
+    <Setter Property="Width" Value="8" />
+    <Setter Property="Height" Value="8" />
+  </Style>
+  <!-- Status pulse (motion.md). Only applied when Windows animation effects are on. -->
+  <Style Selector="Ellipse.dot.pulse">
+    <Style.Animations>
+      <Animation Duration="0:0:2" IterationCount="Infinite" PlaybackDirection="Alternate" Easing="SineEaseInOut">
+        <KeyFrame Cue="0%">
+          <Setter Property="Opacity" Value="1" />
+        </KeyFrame>
+        <KeyFrame Cue="100%">
+          <Setter Property="Opacity" Value="0.35" />
+        </KeyFrame>
+      </Animation>
+    </Style.Animations>
+  </Style>
+
+  <!--
+    Window chrome. The client area extends into the title bar; the app's own top bar and brand
+    block carry the title, so the drawn title text is hidden. Fullscreen has no use here.
+  -->
+  <Style Selector="chrome|WindowDrawnDecorationsContent :is(Control)#PART_TitleTextPanel, chrome|WindowDrawnDecorationsContent :is(Control)#PART_TitlePresenter">
+    <Setter Property="IsVisible" Value="False" />
+    <Setter Property="Opacity" Value="0" />
+  </Style>
+  <Style Selector="chrome|WindowDrawnDecorationsContent :is(Control)#PART_FullScreenButton">
+    <Setter Property="IsVisible" Value="False" />
+  </Style>
+
+  <!-- Thin scrollbars that sit back in the dark. -->
+  <Style Selector="ScrollBar">
+    <Setter Property="AllowAutoHide" Value="True" />
+  </Style>
+</Styles>

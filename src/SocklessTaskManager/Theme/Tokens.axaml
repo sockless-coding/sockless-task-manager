@@ -1,0 +1,135 @@
+<!--
+  Sockless — Workshop variant tokens for Avalonia.
+  Mirrors sockless-guidelines/design/sockless/tokens/workshop.css (theme v1.0.0).
+
+  Two layers, as in the CSS:
+    Sp*   primitives: named materials. Never change meaning.
+    Sl*   semantic roles: what views and styles consume.
+  This is the only file in the app allowed to contain hex values.
+  Dark only. There is no light variant.
+-->
+<ResourceDictionary xmlns="https://github.com/avaloniaui"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+  <!-- ========== Primitives: iron & plate (backgrounds) ========== -->
+  <Color x:Key="SpIron">#0d0d0d</Color>
+  <Color x:Key="SpIron2">#141414</Color>
+  <Color x:Key="SpIron3">#1a1a1a</Color>
+  <Color x:Key="SpPlate">#1e1e1e</Color>
+  <Color x:Key="SpPlate2">#242424</Color>
+
+  <!-- ========== Primitives: steel ========== -->
+  <Color x:Key="SpSteelDark">#2a2a2a</Color>
+  <Color x:Key="SpRivetLine">#3a3a3a</Color>
+  <Color x:Key="SpSteel">#4a4a4a</Color>
+  <Color x:Key="SpSteelLight">#6a6a6a</Color>
+
+  <!-- ========== Primitives: metals ========== -->
+  <Color x:Key="SpCopperDark">#8b5a2b</Color>
+  <Color x:Key="SpCopper">#b87333</Color>
+  <Color x:Key="SpCopperLight">#cd7f32</Color>
+  <Color x:Key="SpBrass">#d4af37</Color>
+  <Color x:Key="SpBrassLight">#e6c44d</Color>
+
+  <!-- ========== Primitives: paper (text) ========== -->
+  <Color x:Key="SpIvory">#f5efe3</Color>
+  <Color x:Key="SpParchment">#e8dcc8</Color>
+  <Color x:Key="SpParchment2">#b0a898</Color>
+  <Color x:Key="SpParchment3">#7a7468</Color>
+
+  <!-- ========== Primitives: status ========== -->
+  <Color x:Key="SpVerdigris">#4caf50</Color>
+  <Color x:Key="SpRust">#e05d3c</Color>
+  <Color x:Key="SpGaslight">#4a90d9</Color>
+  <Color x:Key="SpGaslightLight">#6ab0ff</Color>
+  <Color x:Key="SpVerdigrisDeep">#2e5c1e</Color>
+  <Color x:Key="SpRustDeep">#8b2500</Color>
+  <Color x:Key="SpGaslightDeep">#1a3a5c</Color>
+
+  <!-- ========== Semantic: surfaces ========== -->
+  <SolidColorBrush x:Key="SlBg" Color="{StaticResource SpIron}" />
+  <SolidColorBrush x:Key="SlSurface" Color="{StaticResource SpIron3}" />
+  <SolidColorBrush x:Key="SlCard" Color="{StaticResource SpPlate}" />
+  <SolidColorBrush x:Key="SlRaised" Color="{StaticResource SpPlate2}" />
+  <SolidColorBrush x:Key="SlBorder" Color="{StaticResource SpRivetLine}" />
+  <SolidColorBrush x:Key="SlBorderAccent" Color="{StaticResource SpCopperDark}" />
+
+  <!-- ========== Semantic: text ========== -->
+  <SolidColorBrush x:Key="SlTextHeading" Color="{StaticResource SpIvory}" />
+  <SolidColorBrush x:Key="SlText" Color="{StaticResource SpParchment}" />
+  <SolidColorBrush x:Key="SlTextSecondary" Color="{StaticResource SpParchment2}" />
+  <SolidColorBrush x:Key="SlTextMuted" Color="{StaticResource SpParchment3}" />
+
+  <!-- ========== Semantic: accents & status ========== -->
+  <SolidColorBrush x:Key="SlAccent" Color="{StaticResource SpCopperLight}" />
+  <SolidColorBrush x:Key="SlAccentHover" Color="{StaticResource SpBrassLight}" />
+  <SolidColorBrush x:Key="SlAccentLine" Color="{StaticResource SpCopper}" />
+  <SolidColorBrush x:Key="SlAccent2" Color="{StaticResource SpBrass}" />
+  <SolidColorBrush x:Key="SlSuccess" Color="{StaticResource SpVerdigris}" />
+  <SolidColorBrush x:Key="SlWarning" Color="{StaticResource SpBrass}" />
+  <SolidColorBrush x:Key="SlDanger" Color="{StaticResource SpRust}" />
+  <SolidColorBrush x:Key="SlInfo" Color="{StaticResource SpGaslight}" />
+  <SolidColorBrush x:Key="SlFocus" Color="{StaticResource SpCopperLight}" />
+  <SolidColorBrush x:Key="SlInactiveIcon" Color="{StaticResource SpSteelLight}" />
+
+  <!-- Tints (color.md → Tints). Avalonia has no color-mix(), so each mix used is a token. -->
+  <SolidColorBrush x:Key="SlAccentTint10" Color="{StaticResource SpCopperLight}" Opacity="0.10" />
+  <SolidColorBrush x:Key="SlAccentTint20" Color="{StaticResource SpCopperLight}" Opacity="0.20" />
+  <SolidColorBrush x:Key="SlAccentTint30" Color="{StaticResource SpCopperLight}" Opacity="0.30" />
+  <SolidColorBrush x:Key="SlAccentTint5" Color="{StaticResource SpCopperLight}" Opacity="0.05" />
+  <SolidColorBrush x:Key="SlSuccessTint10" Color="{StaticResource SpVerdigris}" Opacity="0.10" />
+  <SolidColorBrush x:Key="SlSuccessTint25" Color="{StaticResource SpVerdigris}" Opacity="0.25" />
+  <SolidColorBrush x:Key="SlWarningTint10" Color="{StaticResource SpBrass}" Opacity="0.10" />
+  <SolidColorBrush x:Key="SlWarningTint25" Color="{StaticResource SpBrass}" Opacity="0.25" />
+  <SolidColorBrush x:Key="SlBorderFaint" Color="{StaticResource SpCopperLight}" Opacity="0.10" />
+
+  <!-- ========== Data visualisation (color.md → Data visualisation) ========== -->
+  <!-- Series order: copper-light, verdigris, brass, gaslight. Rust only ever means "bad". -->
+  <SolidColorBrush x:Key="SlSeries1" Color="{StaticResource SpCopperLight}" />
+  <SolidColorBrush x:Key="SlSeries2" Color="{StaticResource SpVerdigris}" />
+  <SolidColorBrush x:Key="SlSeries3" Color="{StaticResource SpBrass}" />
+  <SolidColorBrush x:Key="SlSeries4" Color="{StaticResource SpGaslight}" />
+  <SolidColorBrush x:Key="SlChartGrid" Color="{StaticResource SpRivetLine}" Opacity="0.25" />
+  <SolidColorBrush x:Key="SlChartPlot" Color="{StaticResource SpIron}" />
+
+  <!-- Decoration: copper rule that fades at both ends (principles.md rule 4). -->
+  <LinearGradientBrush x:Key="SlRule" StartPoint="0%,0%" EndPoint="100%,0%">
+    <GradientStop Offset="0" Color="Transparent" />
+    <GradientStop Offset="0.5" Color="{StaticResource SpCopper}" />
+    <GradientStop Offset="1" Color="Transparent" />
+  </LinearGradientBrush>
+
+  <!-- ========== Typography ========== -->
+  <FontFamily x:Key="SlFontHeading">avares://SocklessTaskManager/Assets/Fonts#Oswald</FontFamily>
+  <FontFamily x:Key="SlFontBody">avares://SocklessTaskManager/Assets/Fonts#Raleway</FontFamily>
+  <FontFamily x:Key="SlFontMono">avares://SocklessTaskManager/Assets/Fonts#Roboto Mono</FontFamily>
+
+  <!-- Web app scale (typography.md → Web apps), 1rem = 16px. -->
+  <x:Double x:Key="SlTextPageTitle">30</x:Double>
+  <x:Double x:Key="SlTextTopBar">20</x:Double>
+  <x:Double x:Key="SlTextSection">18</x:Double>
+  <x:Double x:Key="SlTextBody">14</x:Double>
+  <x:Double x:Key="SlTextSmall">12</x:Double>
+  <x:Double x:Key="SlTextLabel">11</x:Double>
+  <x:Double x:Key="SlTextReadout">24</x:Double>
+
+  <!-- ========== Spacing ========== -->
+  <x:Double x:Key="SlSpaceXs">4</x:Double>
+  <x:Double x:Key="SlSpaceSm">8</x:Double>
+  <x:Double x:Key="SlSpaceMd">16</x:Double>
+  <x:Double x:Key="SlSpaceLg">24</x:Double>
+  <x:Double x:Key="SlSpaceXl">32</x:Double>
+  <Thickness x:Key="SlCardPadding">24</Thickness>
+  <Thickness x:Key="SlContentPadding">24</Thickness>
+
+  <!-- ========== Shape ========== -->
+  <CornerRadius x:Key="SlRadiusXs">2</CornerRadius>
+  <CornerRadius x:Key="SlRadiusSm">3</CornerRadius>
+  <CornerRadius x:Key="SlRadiusMd">4</CornerRadius>
+  <CornerRadius x:Key="SlRadiusLg">6</CornerRadius>
+  <CornerRadius x:Key="SlRadiusPill">999</CornerRadius>
+
+  <!-- ========== Elevation ========== -->
+  <BoxShadows x:Key="SlShadowMenu">0 8 24 0 #80000000</BoxShadows>
+  <BoxShadows x:Key="SlShadowGlow">0 4 20 0 #26b87333</BoxShadows>
+</ResourceDictionary>

@@ -1,0 +1,28 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:ctl="using:Sockless.TaskManager.Controls"
+             xmlns:perf="using:Sockless.TaskManager.Features.Performance"
+             xmlns:disk="using:Sockless.TaskManager.Features.Performance.Disk"
+             x:Class="Sockless.TaskManager.Features.Performance.Disk.DiskView"
+             x:DataType="disk:DiskDevice">
+  <StackPanel>
+    <perf:DeviceHeader />
+
+    <Border Classes="card">
+      <StackPanel Spacing="20">
+        <ctl:GraphFrame Caption="Active time" Scale="100%" Height="190" ShowFooter="False">
+          <ctl:HistoryGraph Series="{Binding ActiveTime}" Stroke="{StaticResource SlSeries2}" />
+        </ctl:GraphFrame>
+
+        <!-- Read is the solid filled series, write the dashed one; the readouts below are the legend. -->
+        <ctl:GraphFrame Caption="Disk transfer rate" Scale="{Binding TransferScale}" Height="190">
+          <ctl:HistoryGraph Series="{Binding ReadRate}" SecondarySeries="{Binding WriteRate}"
+                            Maximum="{Binding TransferMaximum}"
+                            Stroke="{StaticResource SlSeries2}" SecondaryStroke="{StaticResource SlSeries3}" />
+        </ctl:GraphFrame>
+      </StackPanel>
+    </Border>
+
+    <perf:ReadoutPanel />
+  </StackPanel>
+</UserControl>

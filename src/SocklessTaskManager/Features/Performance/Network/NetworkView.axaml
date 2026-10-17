@@ -1,0 +1,22 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:ctl="using:Sockless.TaskManager.Controls"
+             xmlns:perf="using:Sockless.TaskManager.Features.Performance"
+             xmlns:net="using:Sockless.TaskManager.Features.Performance.Network"
+             x:Class="Sockless.TaskManager.Features.Performance.Network.NetworkView"
+             x:DataType="net:NetworkDevice">
+  <StackPanel>
+    <perf:DeviceHeader />
+
+    <!-- Receive is the solid filled series, send the dashed one; the readouts below are the legend. -->
+    <Border Classes="card">
+      <ctl:GraphFrame Caption="Throughput" Scale="{Binding Scale}" Height="300">
+        <ctl:HistoryGraph Series="{Binding Receive}" SecondarySeries="{Binding Send}"
+                          Maximum="{Binding Maximum}"
+                          Stroke="{StaticResource SlSeries4}" SecondaryStroke="{StaticResource SlSeries3}" />
+      </ctl:GraphFrame>
+    </Border>
+
+    <perf:ReadoutPanel />
+  </StackPanel>
+</UserControl>

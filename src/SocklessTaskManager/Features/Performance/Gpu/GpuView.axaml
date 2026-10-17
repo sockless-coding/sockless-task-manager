@@ -1,0 +1,38 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:ctl="using:Sockless.TaskManager.Controls"
+             xmlns:perf="using:Sockless.TaskManager.Features.Performance"
+             xmlns:gpu="using:Sockless.TaskManager.Features.Performance.Gpu"
+             x:Class="Sockless.TaskManager.Features.Performance.Gpu.GpuView"
+             x:DataType="gpu:GpuDevice">
+  <StackPanel>
+    <perf:DeviceHeader />
+
+    <Border Classes="card">
+      <StackPanel Spacing="20">
+        <!-- Engine types, each with its live value as the scale label. -->
+        <ItemsControl ItemsSource="{Binding Engines}">
+          <ItemsControl.ItemsPanel>
+            <ItemsPanelTemplate>
+              <UniformGrid Columns="2" ColumnSpacing="20" RowSpacing="16" />
+            </ItemsPanelTemplate>
+          </ItemsControl.ItemsPanel>
+          <ItemsControl.ItemTemplate>
+            <DataTemplate x:DataType="gpu:GpuEngine">
+              <ctl:GraphFrame Caption="{Binding Name}" Scale="{Binding Percent}" Height="130" ShowFooter="False">
+                <ctl:HistoryGraph Series="{Binding History}" GridDivisions="5" Stroke="{StaticResource SlSeries1}" />
+              </ctl:GraphFrame>
+            </DataTemplate>
+          </ItemsControl.ItemTemplate>
+        </ItemsControl>
+
+        <ctl:GraphFrame Caption="Dedicated GPU memory usage" Scale="{Binding DedicatedScale}" Height="110">
+          <ctl:HistoryGraph Series="{Binding DedicatedMemory}" Maximum="{Binding DedicatedMaximum}"
+                            GridDivisions="5" Stroke="{StaticResource SlSeries4}" />
+        </ctl:GraphFrame>
+      </StackPanel>
+    </Border>
+
+    <perf:ReadoutPanel />
+  </StackPanel>
+</UserControl>

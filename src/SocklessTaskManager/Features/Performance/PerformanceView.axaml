@@ -1,0 +1,40 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:ctl="using:Sockless.TaskManager.Controls"
+             xmlns:perf="using:Sockless.TaskManager.Features.Performance"
+             x:Class="Sockless.TaskManager.Features.Performance.PerformanceView"
+             x:DataType="perf:PerformanceFeature">
+
+  <Grid ColumnDefinitions="280,*">
+    <!-- Device list: sparkline, name, optional subtitle, live summary. -->
+    <Border Background="{StaticResource SlSurface}"
+            BorderBrush="{StaticResource SlBorderFaint}" BorderThickness="0,0,1,0">
+      <ListBox Theme="{StaticResource PlainList}" Margin="8,12"
+               ItemsSource="{Binding Devices}"
+               SelectedItem="{Binding SelectedDevice}"
+               AutomationProperties.Name="Devices">
+        <ListBox.ItemTemplate>
+          <DataTemplate x:DataType="perf:PerformanceDevice">
+            <Grid ColumnDefinitions="Auto,*" ColumnSpacing="12">
+              <ctl:HistoryGraph Width="64" Height="44" GridDivisions="0" VerticalAlignment="Center"
+                                Series="{Binding Sparkline}" Maximum="{Binding SparklineMaximum}"
+                                Stroke="{Binding Accent}" />
+              <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="1">
+                <TextBlock Text="{Binding Title}" TextTrimming="CharacterEllipsis" />
+                <TextBlock Classes="caption" Text="{Binding Subtitle}" TextTrimming="CharacterEllipsis"
+                           IsVisible="{Binding Subtitle, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+                <TextBlock Classes="caption mono" Text="{Binding Summary}" TextTrimming="CharacterEllipsis" />
+              </StackPanel>
+            </Grid>
+          </DataTemplate>
+        </ListBox.ItemTemplate>
+      </ListBox>
+    </Border>
+
+    <!-- Selected device. Only this region scrolls. -->
+    <ScrollViewer Grid.Column="1" HorizontalScrollBarVisibility="Disabled">
+      <ContentControl Padding="{StaticResource SlContentPadding}"
+                      Content="{Binding SelectedDevice.View, FallbackValue={x:Null}}" />
+    </ScrollViewer>
+  </Grid>
+</UserControl>

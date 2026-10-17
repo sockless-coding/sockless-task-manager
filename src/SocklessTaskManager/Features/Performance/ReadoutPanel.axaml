@@ -1,0 +1,48 @@
+<!--
+  Live readouts (large mono values, with a legend swatch when plotted) beside the device's
+  static details. Shared by every device view.
+-->
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:ctl="using:Sockless.TaskManager.Controls"
+             xmlns:perf="using:Sockless.TaskManager.Features.Performance"
+             x:Class="Sockless.TaskManager.Features.Performance.ReadoutPanel"
+             x:DataType="perf:PerformanceDevice">
+  <Border Classes="card" Margin="0,16,0,0">
+    <Grid ColumnDefinitions="*,Auto" ColumnSpacing="32">
+      <ItemsControl ItemsSource="{Binding Readouts}">
+        <ItemsControl.ItemsPanel>
+          <ItemsPanelTemplate>
+            <WrapPanel ItemSpacing="32" LineSpacing="16" />
+          </ItemsPanelTemplate>
+        </ItemsControl.ItemsPanel>
+        <ItemsControl.ItemTemplate>
+          <DataTemplate x:DataType="perf:Readout">
+            <StackPanel MinWidth="110" Spacing="2">
+              <StackPanel Orientation="Horizontal" Spacing="6">
+                <Line StartPoint="0,0" EndPoint="14,0" VerticalAlignment="Center"
+                      StrokeThickness="3" Stroke="{Binding Series}"
+                      StrokeDashArray="{Binding Dashed, Converter={x:Static perf:SwatchDash.Converter}}"
+                      IsVisible="{Binding HasSeries}" />
+                <ctl:CapsText Classes="label" Value="{Binding Label}" />
+              </StackPanel>
+              <TextBlock Classes="readout" Text="{Binding Value}" />
+            </StackPanel>
+          </DataTemplate>
+        </ItemsControl.ItemTemplate>
+      </ItemsControl>
+
+      <ItemsControl Grid.Column="1" ItemsSource="{Binding Details}" MinWidth="220">
+        <ItemsControl.ItemTemplate>
+          <DataTemplate x:DataType="perf:Detail">
+            <Grid ColumnDefinitions="140,*" Margin="0,3">
+              <TextBlock Classes="caption" Text="{Binding Label}" />
+              <TextBlock Grid.Column="1" Classes="mono" FontSize="{StaticResource SlTextSmall}"
+                         Text="{Binding Value}" TextWrapping="Wrap" />
+            </Grid>
+          </DataTemplate>
+        </ItemsControl.ItemTemplate>
+      </ItemsControl>
+    </Grid>
+  </Border>
+</UserControl>
