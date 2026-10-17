@@ -5,8 +5,10 @@ namespace Sockless.TaskManager.Features.Processes;
 
 /// <summary>
 /// The Processes page: every running process, as a list or as a tree of what started what,
-/// with search, filters, sorting, and processes to follow over time. One
-/// <c>SystemProcessInformation</c> read per tick, only while the page is shown or something is followed.
+/// with search, filters, sorting, and processes to follow over time; details and actions for the
+/// selected process; and the processes that have ended. One <c>SystemProcessInformation</c> read
+/// per tick, only while the page is shown or something is followed. Elevated, a process trace
+/// records every exit as well.
 /// </summary>
 public sealed class ProcessesFeature : Feature, ISampled
 {
@@ -26,4 +28,6 @@ public sealed class ProcessesFeature : Feature, ISampled
     void ISampled.Sample() => List.Sample();
 
     void ISampled.Apply() => List.Apply();
+
+    public override void Dispose() => List.Dispose();
 }

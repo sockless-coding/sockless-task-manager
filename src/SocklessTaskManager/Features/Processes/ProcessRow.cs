@@ -1,3 +1,4 @@
+using System.Collections.ObjectModel;
 using System.Globalization;
 using System.Windows.Input;
 using Avalonia.Media;
@@ -9,7 +10,52 @@ namespace Sockless.TaskManager.Features.Processes;
 /// <param name="IsContext">Shown only because something below it matches the search or filters.</param>
 internal readonly record struct RowPlacement(int Depth, bool HasChildren, bool IsExpanded, bool IsContext);
 
-/// <summary>One row of the process table, updated in place every tick.</summary>
+/// <summary>
+/// One cell of a row, for one of the columns shown after the name. Numeric cells only format
+/// their text when the value changes: most rows of a long list don't change from tick to tick.
+/// </summary>
+public sealed class Cell : ObservableObject
+{
+    private string _text = string.Empty;
+    private double _value = double.NaN;
+
+    internal Cell(TableColumn column) => Column = column;
+
+    public TableColumn Column { get; }
+
+    public string Text
+    {
+        get => _text;
+        private set
+        {
+            if (Set(ref _text, value) && !Column.IsNumeric)
+                OnPropertyChanged(nameof(ToolTip));
+        }
+    }
+
+    /// <summary>Text columns are trimmed to their width, so the whole value is a hover away.</summary>
+    public string? ToolTip => Column.Column == ProcessColumn.User && _text == TableColumn.UnknownUser
+        ? Elevation.IsElevated ? "Windows doesn't say who runs this process" : "Another user's or a system process: run as administrator to see who runs it"
+        : Column.IsNumeric || _text.Length == 0 ? null : _text;
+
+    /// <returns>Whether the text changed.</returns>
+    internal bool Update(ProcessReading reading)
+    {
+        if (Column.SortsByNumber)
+        {
+            var value = Column.Number(reading);
+            if (value == _value)
+                return false;
+            _value = value;
+        }
+
+        var before = _text;
+        Text = Column.Text(reading);
+        return !ReferenceEquals(before, _text);
+    }
+}
+
+/// <summary>One row of the process table, updated in place every tick. Selecting it opens the details pane.</summary>
 public sealed class ProcessRow : ObservableObject
 {
     /// <summary>Indent per tree level, in pixels.</summary>
@@ -17,34 +63,50 @@ public sealed class ProcessRow : ObservableObject
 
     private string _name = string.Empty;
     private string _toolTip = string.Empty;
-    private string _cpuText = string.Empty;
-    private string _memoryText = string.Empty;
-    private string _ioText = string.Empty;
+    private string? _path;
     private double _indent;
     private bool _showExpander;
     private bool _hasChildren;
     private bool _isExpanded;
     private bool _isContext;
     private bool _isFollowed;
-    private double _cpu = double.NaN;
-    private ulong _memory = ulong.MaxValue;
-    private double _io = double.NaN;
+    private bool _isSelected;
+    private bool _isSuspended;
 
-    internal ProcessRow(ProcessKey key, Action<ProcessKey> follow, Action<ProcessKey> toggle)
+    internal ProcessRow(ProcessKey key, IReadOnlyList<TableColumn> columns, ProcessList owner)
     {
+        SetColumns(columns);
         Key = key;
         IdText = key.Id.ToString(CultureInfo.CurrentCulture);
-        FollowCommand = new RelayCommand(() => follow(Key));
-        ToggleCommand = new RelayCommand(() => toggle(Key));
+        SelectCommand = new RelayCommand(() => owner.Select(Key));
+        FollowCommand = new RelayCommand(() => owner.Follow(Key));
+        ToggleCommand = new RelayCommand(() => owner.Toggle(Key));
+        EndCommand = new RelayCommand(() => owner.RequestEnd(Key, tree: false));
+        EndTreeCommand = new RelayCommand(() => owner.RequestEnd(Key, tree: true));
+        SuspendCommand = new RelayCommand(() => owner.SuspendOrResume(Key));
+        OpenLocationCommand = new RelayCommand(() => owner.OpenLocation(_path));
     }
 
     internal ProcessKey Key { get; }
 
     public string IdText { get; }
 
+    public ICommand SelectCommand { get; }
+
     public ICommand FollowCommand { get; }
 
     public ICommand ToggleCommand { get; }
+
+    public ICommand EndCommand { get; }
+
+    public ICommand EndTreeCommand { get; }
+
+    public ICommand SuspendCommand { get; }
+
+    public ICommand OpenLocationCommand { get; }
+
+    /// <summary>The executable's folder can only be opened when its path could be read.</summary>
+    public bool HasPath => _path is not null;
 
     public string Name
     {
@@ -67,31 +129,8 @@ public sealed class ProcessRow : ObservableObject
         private set => Set(ref _toolTip, value);
     }
 
-    public string CpuText
-    {
-        get => _cpuText;
-        private set
-        {
-            if (Set(ref _cpuText, value))
-                OnPropertyChanged(nameof(AccessibleName));
-        }
-    }
-
-    public string MemoryText
-    {
-        get => _memoryText;
-        private set
-        {
-            if (Set(ref _memoryText, value))
-                OnPropertyChanged(nameof(AccessibleName));
-        }
-    }
-
-    public string IoText
-    {
-        get => _ioText;
-        private set => Set(ref _ioText, value);
-    }
+    /// <summary>The shown columns after the name, in order.</summary>
+    public ObservableCollection<Cell> Cells { get; } = [];
 
     /// <summary>Left indent of the name: tree depth.</summary>
     public double Indent
@@ -145,6 +184,7 @@ public sealed class ProcessRow : ObservableObject
             if (Set(ref _isFollowed, value))
             {
                 OnPropertyChanged(nameof(FollowName));
+                OnPropertyChanged(nameof(FollowText));
                 OnPropertyChanged(nameof(AccessibleName));
             }
         }
@@ -152,32 +192,56 @@ public sealed class ProcessRow : ObservableObject
 
     public string FollowName => _isFollowed ? $"Stop following {_name}" : $"Follow {_name}";
 
-    public string AccessibleName =>
-        $"{_name}, process {IdText}, CPU {_cpuText}, memory {_memoryText}{(_isFollowed ? ", followed" : string.Empty)}";
+    public string FollowText => _isFollowed ? "Stop following" : "Follow";
 
-    internal void Update(ProcessReading reading, RowPlacement placement, bool showTree, bool isFollowed)
+    public bool IsSelected
+    {
+        get => _isSelected;
+        internal set => Set(ref _isSelected, value);
+    }
+
+    /// <summary>Every thread is suspended. Shown as a badge with the word, not by colour alone.</summary>
+    public bool IsSuspended
+    {
+        get => _isSuspended;
+        private set
+        {
+            if (Set(ref _isSuspended, value))
+            {
+                OnPropertyChanged(nameof(SuspendText));
+                OnPropertyChanged(nameof(AccessibleName));
+            }
+        }
+    }
+
+    public string SuspendText => _isSuspended ? "Resume" : "Suspend";
+
+    public string AccessibleName =>
+        $"{_name}, {string.Join(", ", Cells.Select(c => $"{c.Column.Title} {c.Text}"))}{(_isSuspended ? ", suspended" : string.Empty)}{(_isFollowed ? ", followed" : string.Empty)}";
+
+    /// <summary>The shown columns changed: one cell per column, filled on the next update.</summary>
+    internal void SetColumns(IReadOnlyList<TableColumn> columns)
+    {
+        Cells.Clear();
+        foreach (var column in columns)
+            Cells.Add(new Cell(column));
+    }
+
+    internal void Update(ProcessReading reading, RowPlacement placement, bool showTree, bool isFollowed, bool isSelected)
     {
         Name = reading.Name;
         ToolTip = reading.Path ?? reading.Name;
-
-        // Most rows of a long list don't change from one tick to the next.
-        if (reading.Cpu != _cpu)
+        if (_path != reading.Path)
         {
-            _cpu = reading.Cpu;
-            CpuText = CpuPercent(reading.Cpu);
+            _path = reading.Path;
+            OnPropertyChanged(nameof(HasPath));
         }
 
-        if (reading.Memory != _memory)
-        {
-            _memory = reading.Memory;
-            MemoryText = Format.Bytes(reading.Memory);
-        }
-
-        if (reading.IoRate != _io)
-        {
-            _io = reading.IoRate;
-            IoText = Format.BytesPerSecond(reading.IoRate);
-        }
+        var changed = false;
+        foreach (var cell in Cells)
+            changed |= cell.Update(reading);
+        if (changed)
+            OnPropertyChanged(nameof(AccessibleName));
 
         Indent = placement.Depth * IndentStep;
         ShowExpander = showTree;
@@ -185,6 +249,8 @@ public sealed class ProcessRow : ObservableObject
         IsExpanded = placement.IsExpanded;
         IsContext = placement.IsContext;
         IsFollowed = isFollowed;
+        IsSelected = isSelected;
+        IsSuspended = reading.IsSuspended;
     }
 
     /// <summary>One decimal, like Task Manager's process list; idle reads as a plain 0%.</summary>

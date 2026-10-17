@@ -28,7 +28,9 @@ src/SocklessTaskManager/
   Theme/                Tokens.axaml (design tokens), Icons.axaml (Heroicons + gear), Controls.axaml (component styles)
   Shell/                main window: sidebar, top bar, page host
   Features/
-    Processes/          a top-level feature: process list and tree, search, filters, followed processes
+    Processes/          a top-level feature: process list and tree, search, filters, followed processes,
+                        details and actions (end, suspend, priority, affinity), ended processes (ETW when elevated),
+                        a column chooser and column filters (TableColumn.cs, ColumnFilter.cs)
     Performance/        a top-level feature (one sidebar entry)
       PerformanceModule.cs   the list of device scanners for this feature
       Cpu/ Memory/ Disk/ Network/ Gpu/   one sub-slice per device kind

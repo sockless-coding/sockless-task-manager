@@ -97,6 +97,19 @@
         <Style Selector="^:pointerover">
           <Setter Property="Background" Value="{StaticResource SlAccentTint20}" />
         </Style>
+        <Style Selector="^:disabled">
+          <Setter Property="Opacity" Value="0.5" />
+          <Setter Property="Cursor" Value="Arrow" />
+        </Style>
+      </ControlTheme>
+
+      <!-- Danger button (components.md → Buttons): the soft button in rust. End, delete, stop. -->
+      <ControlTheme x:Key="DangerButton" TargetType="Button" BasedOn="{StaticResource SoftButton}">
+        <Setter Property="Foreground" Value="{StaticResource SlDanger}" />
+        <Setter Property="Background" Value="{StaticResource SlDangerTint10}" />
+        <Style Selector="^:pointerover">
+          <Setter Property="Background" Value="{StaticResource SlDangerTint20}" />
+        </Style>
       </ControlTheme>
 
       <!-- Soft toggle: as the soft button; when on, a 30% accent rim so state isn't fill alone. -->
@@ -234,6 +247,45 @@
       </ControlTheme>
 
       <!--
+        An on/off chip in a set (processor affinity): the segment button's look, any number on.
+        Off: secondary text on a steel rim. On: accent text, 10% fill, 30% accent rim.
+      -->
+      <ControlTheme x:Key="ChipToggle" TargetType="ToggleButton">
+        <Setter Property="Foreground" Value="{StaticResource SlTextSecondary}" />
+        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="BorderBrush" Value="{StaticResource SlBorder}" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="CornerRadius" Value="{StaticResource SlRadiusSm}" />
+        <Setter Property="Padding" Value="6,3" />
+        <Setter Property="FontFamily" Value="{StaticResource SlFontMono}" />
+        <Setter Property="FontSize" Value="{StaticResource SlTextSmall}" />
+        <Setter Property="Cursor" Value="Hand" />
+        <Setter Property="FocusAdorner" Value="{StaticResource SlFocusAdorner}" />
+        <Setter Property="Template">
+          <ControlTemplate>
+            <ContentPresenter Name="PART_ContentPresenter"
+                              Background="{TemplateBinding Background}"
+                              BorderBrush="{TemplateBinding BorderBrush}"
+                              BorderThickness="{TemplateBinding BorderThickness}"
+                              CornerRadius="{TemplateBinding CornerRadius}"
+                              Padding="{TemplateBinding Padding}"
+                              Content="{TemplateBinding Content}"
+                              Foreground="{TemplateBinding Foreground}"
+                              HorizontalContentAlignment="Center"
+                              VerticalContentAlignment="Center" />
+          </ControlTemplate>
+        </Setter>
+        <Style Selector="^:pointerover">
+          <Setter Property="Foreground" Value="{StaticResource SlAccent}" />
+        </Style>
+        <Style Selector="^:checked">
+          <Setter Property="Foreground" Value="{StaticResource SlAccent}" />
+          <Setter Property="Background" Value="{StaticResource SlAccentTint10}" />
+          <Setter Property="BorderBrush" Value="{StaticResource SlAccentTint30}" />
+        </Style>
+      </ControlTheme>
+
+      <!--
         A sortable table column title. Secondary like the rest of the header; copper-light on hover
         and while it is the sort column, which also shows a direction chevron.
       -->
@@ -279,6 +331,56 @@
       <StaticResource x:Key="TextControlSelectionHighlightColor" ResourceKey="SlAccentTint30" />
       <Thickness x:Key="TextControlBorderThemeThicknessFocused">1</Thickness>
 
+      <!-- Select (components.md → Forms): the text input's plate and border; the list on the surface. -->
+      <StaticResource x:Key="ComboBoxBackground" ResourceKey="SlRaised" />
+      <StaticResource x:Key="ComboBoxBackgroundPointerOver" ResourceKey="SlRaised" />
+      <StaticResource x:Key="ComboBoxBackgroundPressed" ResourceKey="SlRaised" />
+      <StaticResource x:Key="ComboBoxBackgroundUnfocused" ResourceKey="SlRaised" />
+      <StaticResource x:Key="ComboBoxBackgroundDisabled" ResourceKey="SlCard" />
+      <StaticResource x:Key="ComboBoxBorderBrush" ResourceKey="SlBorder" />
+      <StaticResource x:Key="ComboBoxBorderBrushPointerOver" ResourceKey="SlAccentLine" />
+      <StaticResource x:Key="ComboBoxBorderBrushPressed" ResourceKey="SlAccent" />
+      <StaticResource x:Key="ComboBoxBorderBrushDisabled" ResourceKey="SlBorder" />
+      <StaticResource x:Key="ComboBoxBackgroundBorderBrushFocused" ResourceKey="SlAccent" />
+      <StaticResource x:Key="ComboBoxBackgroundBorderBrushUnfocused" ResourceKey="SlBorder" />
+      <StaticResource x:Key="ComboBoxForeground" ResourceKey="SlText" />
+      <StaticResource x:Key="ComboBoxForegroundFocused" ResourceKey="SlText" />
+      <StaticResource x:Key="ComboBoxForegroundFocusedPressed" ResourceKey="SlText" />
+      <StaticResource x:Key="ComboBoxForegroundDisabled" ResourceKey="SlTextMuted" />
+      <StaticResource x:Key="ComboBoxDropDownGlyphForeground" ResourceKey="SlTextSecondary" />
+      <StaticResource x:Key="ComboBoxDropDownGlyphForegroundFocused" ResourceKey="SlAccent" />
+      <StaticResource x:Key="ComboBoxDropDownGlyphForegroundFocusedPressed" ResourceKey="SlAccent" />
+      <StaticResource x:Key="ComboBoxDropDownBackground" ResourceKey="SlSurface" />
+      <StaticResource x:Key="ComboBoxDropDownBorderBrush" ResourceKey="SlAccentTint30" />
+      <StaticResource x:Key="ComboBoxItemForeground" ResourceKey="SlText" />
+      <StaticResource x:Key="ComboBoxItemForegroundPointerOver" ResourceKey="SlAccent" />
+      <StaticResource x:Key="ComboBoxItemForegroundPressed" ResourceKey="SlAccent" />
+      <StaticResource x:Key="ComboBoxItemForegroundSelected" ResourceKey="SlAccent" />
+      <StaticResource x:Key="ComboBoxItemForegroundSelectedPointerOver" ResourceKey="SlAccent" />
+      <StaticResource x:Key="ComboBoxItemForegroundSelectedPressed" ResourceKey="SlAccent" />
+      <StaticResource x:Key="ComboBoxItemBackgroundPointerOver" ResourceKey="SlAccentTint5" />
+      <StaticResource x:Key="ComboBoxItemBackgroundPressed" ResourceKey="SlAccentTint10" />
+      <StaticResource x:Key="ComboBoxItemBackgroundSelected" ResourceKey="SlAccentTint10" />
+      <StaticResource x:Key="ComboBoxItemBackgroundSelectedPointerOver" ResourceKey="SlAccentTint20" />
+      <StaticResource x:Key="ComboBoxItemBackgroundSelectedPressed" ResourceKey="SlAccentTint20" />
+
+      <!--
+        Context menus, as the website's dropdowns (components.md → Navigation): the surface with
+        an accent rim; items in body text, copper-light on hover.
+      -->
+      <StaticResource x:Key="MenuFlyoutPresenterBackground" ResourceKey="SlSurface" />
+      <StaticResource x:Key="MenuFlyoutPresenterBorderBrush" ResourceKey="SlAccentTint30" />
+      <StaticResource x:Key="MenuFlyoutItemForeground" ResourceKey="SlText" />
+      <StaticResource x:Key="MenuFlyoutItemForegroundPointerOver" ResourceKey="SlAccent" />
+      <StaticResource x:Key="MenuFlyoutItemForegroundPressed" ResourceKey="SlAccent" />
+      <StaticResource x:Key="MenuFlyoutItemForegroundDisabled" ResourceKey="SlTextMuted" />
+      <StaticResource x:Key="MenuFlyoutItemBackgroundPointerOver" ResourceKey="SlAccentTint10" />
+      <StaticResource x:Key="MenuFlyoutItemBackgroundPressed" ResourceKey="SlAccentTint20" />
+      <StaticResource x:Key="MenuFlyoutItemKeyboardAcceleratorTextForeground" ResourceKey="SlTextSecondary" />
+      <StaticResource x:Key="MenuFlyoutItemKeyboardAcceleratorTextForegroundPointerOver" ResourceKey="SlTextSecondary" />
+      <StaticResource x:Key="MenuFlyoutItemKeyboardAcceleratorTextForegroundPressed" ResourceKey="SlTextSecondary" />
+      <StaticResource x:Key="MenuFlyoutItemKeyboardAcceleratorTextForegroundDisabled" ResourceKey="SlTextMuted" />
+
       <!--
         Table row (components.md → Tables): 1px faint border below, a 5% tint on hover.
         A row that opens something is a button; one that doesn't is disabled, so it is skipped
@@ -312,6 +414,21 @@
         </Style>
         <Style Selector="^:pointerover:not(:disabled)">
           <Setter Property="Background" Value="{StaticResource SlAccentTint5}" />
+        </Style>
+      </ControlTheme>
+
+      <!--
+        A table row that selects what it shows (process tables): the table row, compact, with a
+        10% accent fill while selected. The details pane opening for it is the other cue.
+      -->
+      <ControlTheme x:Key="SelectableRow" TargetType="Button" BasedOn="{StaticResource TableRow}">
+        <Setter Property="Padding" Value="24,3" />
+        <Setter Property="Cursor" Value="Hand" />
+        <Style Selector="^.selected">
+          <Setter Property="Background" Value="{StaticResource SlAccentTint10}" />
+        </Style>
+        <Style Selector="^.selected:pointerover">
+          <Setter Property="Background" Value="{StaticResource SlAccentTint10}" />
         </Style>
       </ControlTheme>
 
@@ -453,6 +570,56 @@
     <Setter Property="Background" Value="{StaticResource SlSuccessTint10}" />
     <Setter Property="BorderBrush" Value="{StaticResource SlSuccessTint25}" />
     <Setter Property="TextElement.Foreground" Value="{StaticResource SlSuccess}" />
+  </Style>
+
+  <Style Selector="Border.badge.warning">
+    <Setter Property="Background" Value="{StaticResource SlWarningTint10}" />
+    <Setter Property="BorderBrush" Value="{StaticResource SlWarningTint25}" />
+    <Setter Property="TextElement.Foreground" Value="{StaticResource SlWarning}" />
+  </Style>
+
+  <!-- Callout (components.md → Callouts): a 5% status tint, 20% rim, card radius; one or two sentences. -->
+  <Style Selector="Border.callout">
+    <Setter Property="CornerRadius" Value="{StaticResource SlRadiusMd}" />
+    <Setter Property="Padding" Value="12,10" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="Background" Value="{StaticResource SlAccentTint5}" />
+    <Setter Property="BorderBrush" Value="{StaticResource SlAccentTint20}" />
+  </Style>
+  <Style Selector="Border.callout.info">
+    <Setter Property="Background" Value="{StaticResource SlInfoTint5}" />
+    <Setter Property="BorderBrush" Value="{StaticResource SlInfoTint20}" />
+  </Style>
+  <Style Selector="Border.callout.danger">
+    <Setter Property="Background" Value="{StaticResource SlDangerTint5}" />
+    <Setter Property="BorderBrush" Value="{StaticResource SlDangerTint20}" />
+  </Style>
+  <Style Selector="Border.callout ctl|Icon.status">
+    <Setter Property="Foreground" Value="{StaticResource SlAccent}" />
+  </Style>
+  <Style Selector="Border.callout.info ctl|Icon.status">
+    <Setter Property="Foreground" Value="{StaticResource SlInfo}" />
+  </Style>
+  <Style Selector="Border.callout.danger ctl|Icon.status">
+    <Setter Property="Foreground" Value="{StaticResource SlDanger}" />
+  </Style>
+
+  <!-- Dialog (components.md → Overlays): surface, 6px radius, over the scrim. -->
+  <Style Selector="Border.dialog">
+    <Setter Property="Background" Value="{StaticResource SlSurface}" />
+    <Setter Property="BorderBrush" Value="{StaticResource SlBorder}" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="CornerRadius" Value="{StaticResource SlRadiusLg}" />
+    <Setter Property="Padding" Value="{StaticResource SlCardPadding}" />
+    <Setter Property="BoxShadow" Value="{StaticResource SlShadowMenu}" />
+  </Style>
+  <!-- Dialog title: Oswald, uppercase via CapsText. -->
+  <Style Selector="TextBlock.dialog-title">
+    <Setter Property="FontFamily" Value="{StaticResource SlFontHeading}" />
+    <Setter Property="FontSize" Value="{StaticResource SlTextSection}" />
+    <Setter Property="FontWeight" Value="SemiBold" />
+    <Setter Property="LetterSpacing" Value="1.2" />
+    <Setter Property="Foreground" Value="{StaticResource SlTextHeading}" />
   </Style>
 
   <Style Selector="ctl|HistoryGraph">

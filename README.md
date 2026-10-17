@@ -4,13 +4,18 @@ A lightweight alternative to the Windows Task Manager, in the Sockless Workshop 
 
 ## What it does
 
-The **Processes** page lists every running process with its CPU, memory (private working set) and I/O rate:
+The **Processes** page lists every running process with its PID, user, CPU, memory (private working set) and I/O rate:
 
 - **List** or **Tree**: one sorted list, or each process under the process that started it, with collapsible branches.
 - **Search** by name, path or PID (Ctrl+F; Esc clears). In the tree, a match's ancestors stay visible in quieter text so you can see what started it.
 - **Filters**: only followed processes, or only processes in your own Windows session (hides services and system processes).
+- **Columns**: add threads, handles, working set, commit, priority, session, start time, file description, path or command line from the Columns button or by right-clicking the column titles. The choice and the sort are remembered. When they don't fit, the table scrolls sideways. Without elevation the User column only names your own processes.
+- **Column filters** (the funnel): a filter box under each column. Text: `chrome`, `=SYSTEM`, `!svchost`, `chrome|edge`. Numbers: `> 5`, `<= 2`, `10-50`; memory and I/O take units (`> 100 MB`, `> 1 MB/s`, MB if none). Turning the filter row off clears them.
 - **Sort** by any column; the order holds for a few seconds at a time so rows don't jump under the pointer.
 - **Follow** a process with the star: it gets a card below the table with a minute of CPU and memory history. Cards keep recording while you're on other pages, and show "Exited" when the process ends.
+- **Details**: select a row (or move with the arrow keys) to open its details beside the table: live CPU and memory, path, command line, parent, user, start time, threads, handles and memory figures.
+- **Actions** from the details or a row's right-click menu: end task (Delete) or end the whole process tree, suspend and resume, change priority or processor affinity, open the file location. Ending a process always asks first, and names what it will end; an id that now belongs to a different process is never touched.
+- **Ended**: processes that have exited, newest first, with how long they ran and their exit code; filter to short-lived ones. Run as administrator and every process is caught by a kernel trace, even ones that last a few milliseconds, all the time. Without it, only processes that ran for at least a second while the page was sampling are listed.
 
 The **Performance** page shows live graphs and figures for each device, the way Task Manager's Performance tab does:
 
@@ -31,7 +36,7 @@ The **Memory** page shows what the RAM is holding and lets you drill into each p
 
 It only reads what the level on screen needs, and only while the page is visible. Address-space and driver-file scans run once when opened, with a Refresh button.
 
-Data comes from Windows APIs: performance counters via PDH, `GlobalMemoryStatusEx`, SMBIOS, storage IOCTLs and DXGI, plus `NtQuerySystemInformation` and process working-set queries for the Processes and Memory pages. No WMI, no admin rights; run as administrator only to inspect elevated processes' address spaces.
+Data comes from Windows APIs: performance counters via PDH, `GlobalMemoryStatusEx`, SMBIOS, storage IOCTLs and DXGI, plus `NtQuerySystemInformation` and process working-set queries for the Processes and Memory pages. No WMI, no admin rights; run as administrator to end or change other users' processes, to trace every process that starts and ends (ETW), and to inspect elevated processes' address spaces.
 
 ## Footprint
 

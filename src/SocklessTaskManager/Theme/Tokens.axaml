@@ -81,7 +81,15 @@
   <SolidColorBrush x:Key="SlSuccessTint25" Color="{StaticResource SpVerdigris}" Opacity="0.25" />
   <SolidColorBrush x:Key="SlWarningTint10" Color="{StaticResource SpBrass}" Opacity="0.10" />
   <SolidColorBrush x:Key="SlWarningTint25" Color="{StaticResource SpBrass}" Opacity="0.25" />
+  <SolidColorBrush x:Key="SlDangerTint5" Color="{StaticResource SpRust}" Opacity="0.05" />
+  <SolidColorBrush x:Key="SlDangerTint10" Color="{StaticResource SpRust}" Opacity="0.10" />
+  <SolidColorBrush x:Key="SlDangerTint20" Color="{StaticResource SpRust}" Opacity="0.20" />
+  <SolidColorBrush x:Key="SlInfoTint5" Color="{StaticResource SpGaslight}" Opacity="0.05" />
+  <SolidColorBrush x:Key="SlInfoTint20" Color="{StaticResource SpGaslight}" Opacity="0.20" />
   <SolidColorBrush x:Key="SlBorderFaint" Color="{StaticResource SpCopperLight}" Opacity="0.10" />
+
+  <!-- Dialog scrim (layout.md → Overlays): black at 70%. -->
+  <SolidColorBrush x:Key="SlScrim" Color="#000000" Opacity="0.70" />
 
   <!-- ========== Data visualisation (color.md → Data visualisation) ========== -->
   <!-- Series order: copper-light, verdigris, brass, gaslight. Rust only ever means "bad". -->
