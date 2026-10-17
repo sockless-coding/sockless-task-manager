@@ -1,0 +1,232 @@
+<!--
+  Processes page: title and counts, a toolbar (search, filters, list or tree), the process
+  table filling the page, and the followed processes as a tray of cards below it.
+  Only the table scrolls, and it is virtualized. In the tree, names are indented by depth and
+  parents have an expander; while searching, a match's ancestors stay visible in quieter text.
+-->
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:ctl="using:Sockless.TaskManager.Controls"
+             xmlns:proc="using:Sockless.TaskManager.Features.Processes"
+             x:Class="Sockless.TaskManager.Features.Processes.ProcessesView"
+             x:DataType="proc:ProcessList">
+
+  <UserControl.Resources>
+    <!-- Column title, plus a direction chevron on the sort column. -->
+    <DataTemplate x:Key="SortHeaderTemplate" x:DataType="proc:SortColumn">
+      <Button Theme="{StaticResource SortHeader}" Classes.active="{Binding IsActive}"
+              Command="{Binding SortCommand}" AutomationProperties.Name="{Binding AccessibleName}">
+        <StackPanel Orientation="Horizontal" Spacing="4">
+          <TextBlock Text="{Binding Title}" />
+          <ctl:Icon Width="12" Height="12" VerticalAlignment="Center" Data="{Binding Glyph}" IsVisible="{Binding IsActive}" />
+        </StackPanel>
+      </Button>
+    </DataTemplate>
+  </UserControl.Resources>
+
+  <UserControl.Styles>
+    <Style Selector="Border.process-row">
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="BorderBrush" Value="{StaticResource SlBorderFaint}" />
+      <Setter Property="BorderThickness" Value="0,0,0,1" />
+      <Setter Property="Padding" Value="24,3" />
+    </Style>
+    <Style Selector="Border.process-row:pointerover">
+      <Setter Property="Background" Value="{StaticResource SlAccentTint5}" />
+    </Style>
+    <Style Selector="Border.process-row.context TextBlock">
+      <Setter Property="Foreground" Value="{StaticResource SlTextSecondary}" />
+    </Style>
+    <Style Selector="TextBlock.number">
+      <Setter Property="FontFamily" Value="{StaticResource SlFontMono}" />
+      <Setter Property="FontSize" Value="{StaticResource SlTextSmall}" />
+      <Setter Property="HorizontalAlignment" Value="Right" />
+      <Setter Property="VerticalAlignment" Value="Center" />
+    </Style>
+  </UserControl.Styles>
+
+  <Grid RowDefinitions="Auto,Auto,*,Auto" Margin="{StaticResource SlContentPadding}">
+    <StackPanel Spacing="4" Margin="0,0,0,16">
+      <TextBlock Classes="page-title" Text="Processes" />
+      <TextBlock Classes="secondary" Text="{Binding Summary}" />
+    </StackPanel>
+
+    <!-- ========== Toolbar ========== -->
+    <Grid Grid.Row="1" ColumnDefinitions="Auto,*,Auto" ColumnSpacing="16" Margin="0,0,0,12">
+      <TextBox x:Name="Search" Width="340" VerticalContentAlignment="Center"
+               Text="{Binding SearchText}" PlaceholderText="Search by name, PID or path"
+               AutomationProperties.Name="Search processes" ToolTip.Tip="Search (Ctrl+F)">
+        <TextBox.InnerLeftContent>
+          <ctl:Icon Width="16" Height="16" Margin="10,0,0,0" Foreground="{StaticResource SlTextSecondary}"
+                    Data="{StaticResource IconSearch}" />
+        </TextBox.InnerLeftContent>
+        <TextBox.InnerRightContent>
+          <Button Theme="{StaticResource IconButton}" Margin="0,0,4,0" IsVisible="{Binding HasSearch}"
+                  Command="{Binding ClearSearchCommand}" AutomationProperties.Name="Clear search">
+            <ctl:Icon Width="14" Height="14" Data="{StaticResource IconClose}" />
+          </Button>
+        </TextBox.InnerRightContent>
+      </TextBox>
+
+      <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+        <ToggleButton Theme="{StaticResource SoftToggle}" IsChecked="{Binding FollowedOnly}"
+                      ToolTip.Tip="Only the processes you follow">
+          <StackPanel Orientation="Horizontal" Spacing="6">
+            <ctl:Icon Width="14" Height="14" Data="{StaticResource IconStar}" />
+            <TextBlock Text="Followed" VerticalAlignment="Center" />
+          </StackPanel>
+        </ToggleButton>
+        <ToggleButton Theme="{StaticResource SoftToggle}" IsChecked="{Binding ThisSessionOnly}"
+                      ToolTip.Tip="Only processes in your Windows session; hides services and system processes">
+          <TextBlock Text="My session" />
+        </ToggleButton>
+      </StackPanel>
+
+      <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="4" VerticalAlignment="Center"
+                  AutomationProperties.Name="Layout">
+        <RadioButton Theme="{StaticResource SegmentButton}" GroupName="ProcessLayout" Content="List"
+                     IsChecked="{Binding IsFlat}" ToolTip.Tip="Every process in one sorted list" />
+        <RadioButton Theme="{StaticResource SegmentButton}" GroupName="ProcessLayout" Content="Tree"
+                     IsChecked="{Binding IsTree}" ToolTip.Tip="Processes under the process that started them" />
+      </StackPanel>
+    </Grid>
+
+    <!-- ========== Table ========== -->
+    <Border Grid.Row="2" Classes="card" Padding="0" ClipToBounds="True">
+      <Grid RowDefinitions="Auto,*">
+        <Border Classes="table-header">
+          <Grid ColumnDefinitions="*,64,64,88,88,24" ColumnSpacing="16">
+            <ContentControl Content="{Binding NameColumn}" ContentTemplate="{StaticResource SortHeaderTemplate}"
+                            HorizontalAlignment="Left" />
+            <ContentControl Grid.Column="1" Content="{Binding IdColumn}" ContentTemplate="{StaticResource SortHeaderTemplate}"
+                            HorizontalAlignment="Right" />
+            <ContentControl Grid.Column="2" Content="{Binding CpuColumn}" ContentTemplate="{StaticResource SortHeaderTemplate}"
+                            HorizontalAlignment="Right" />
+            <ContentControl Grid.Column="3" Content="{Binding MemoryColumn}" ContentTemplate="{StaticResource SortHeaderTemplate}"
+                            HorizontalAlignment="Right" />
+            <ContentControl Grid.Column="4" Content="{Binding IoColumn}" ContentTemplate="{StaticResource SortHeaderTemplate}"
+                            HorizontalAlignment="Right" />
+          </Grid>
+        </Border>
+
+        <ItemsControl Grid.Row="1" ItemsSource="{Binding Rows}" AutomationProperties.Name="Processes">
+          <ItemsControl.Template>
+            <ControlTemplate>
+              <ScrollViewer HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
+                <ItemsPresenter Name="PART_ItemsPresenter" ItemsPanel="{TemplateBinding ItemsPanel}" />
+              </ScrollViewer>
+            </ControlTemplate>
+          </ItemsControl.Template>
+          <ItemsControl.ItemsPanel>
+            <ItemsPanelTemplate>
+              <VirtualizingStackPanel />
+            </ItemsPanelTemplate>
+          </ItemsControl.ItemsPanel>
+          <ItemsControl.ItemTemplate>
+            <DataTemplate x:DataType="proc:ProcessRow">
+              <Panel>
+                <Border Classes="process-row" Classes.context="{Binding IsContext}"
+                        AutomationProperties.Name="{Binding AccessibleName}">
+                  <Grid ColumnDefinitions="*,64,64,88,88,24" ColumnSpacing="16">
+                    <Grid ColumnDefinitions="Auto,Auto,*">
+                      <Border Width="{Binding Indent}" />
+                      <Panel Grid.Column="1" Width="24" IsVisible="{Binding ShowExpander}">
+                        <ToggleButton Theme="{StaticResource ChromeButton}" Padding="3" HorizontalAlignment="Left"
+                                      VerticalAlignment="Center" IsVisible="{Binding HasChildren}"
+                                      IsChecked="{Binding IsExpanded, Mode=OneWay}" Command="{Binding ToggleCommand}"
+                                      AutomationProperties.Name="{Binding ExpanderName}">
+                          <ctl:Icon Width="14" Height="14" Data="{Binding ExpanderGlyph}" />
+                        </ToggleButton>
+                      </Panel>
+                      <TextBlock Grid.Column="2" Text="{Binding Name}" ToolTip.Tip="{Binding ToolTip}"
+                                 TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
+                    </Grid>
+                    <TextBlock Grid.Column="1" Classes="number" Text="{Binding IdText}" />
+                    <TextBlock Grid.Column="2" Classes="number" Text="{Binding CpuText}" />
+                    <TextBlock Grid.Column="3" Classes="number" Text="{Binding MemoryText}" />
+                    <TextBlock Grid.Column="4" Classes="number" Text="{Binding IoText}" />
+                    <ToggleButton Grid.Column="5" Theme="{StaticResource IconToggle}" VerticalAlignment="Center"
+                                  IsChecked="{Binding IsFollowed, Mode=OneWay}" Command="{Binding FollowCommand}"
+                                  AutomationProperties.Name="{Binding FollowName}" ToolTip.Tip="{Binding FollowName}">
+                      <ctl:Icon Width="16" Height="16" Data="{StaticResource IconStar}" />
+                    </ToggleButton>
+                  </Grid>
+                </Border>
+                <!-- Followed rows carry a copper edge as well as the lit star. -->
+                <Border Width="2" HorizontalAlignment="Left" Background="{StaticResource SlAccent}"
+                        IsVisible="{Binding IsFollowed}" />
+              </Panel>
+            </DataTemplate>
+          </ItemsControl.ItemTemplate>
+        </ItemsControl>
+
+        <!-- Empty state (components.md): icon, what's missing, what to do. -->
+        <StackPanel Grid.Row="1" Spacing="8" Margin="24,64" HorizontalAlignment="Center" VerticalAlignment="Top"
+                    IsVisible="{Binding IsEmpty}">
+          <ctl:Icon Width="48" Height="48" HorizontalAlignment="Center" Foreground="{StaticResource SlTextSecondary}"
+                    Data="{StaticResource IconSearch}" />
+          <TextBlock Text="{Binding EmptyTitle}" HorizontalAlignment="Center" FontWeight="SemiBold" />
+          <TextBlock Classes="caption" Text="{Binding EmptyHint}" HorizontalAlignment="Center" />
+        </StackPanel>
+      </Grid>
+    </Border>
+
+    <!--
+      ========== Followed processes ==========
+      A tray under the table, so following a row never moves the rows under the pointer.
+    -->
+    <StackPanel Grid.Row="3" Spacing="8" Margin="0,16,0,0" IsVisible="{Binding HasFollowed}">
+      <ctl:CapsText Classes="label" Value="Following" />
+      <ScrollViewer HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled">
+        <ItemsControl ItemsSource="{Binding Followed}" AutomationProperties.Name="Followed processes">
+          <ItemsControl.ItemsPanel>
+            <ItemsPanelTemplate>
+              <StackPanel Orientation="Horizontal" Spacing="16" />
+            </ItemsPanelTemplate>
+          </ItemsControl.ItemsPanel>
+          <ItemsControl.ItemTemplate>
+            <DataTemplate x:DataType="proc:FollowedProcess">
+              <Border Classes="card" Padding="16" Width="300" Margin="0,0,0,4">
+                <StackPanel Spacing="12">
+                  <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="8">
+                    <StackPanel Spacing="1" ToolTip.Tip="{Binding ToolTip}">
+                      <TextBlock Text="{Binding Name}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
+                      <TextBlock Classes="caption mono" Text="{Binding IdText}" />
+                    </StackPanel>
+                    <Border Grid.Column="1" Classes="badge" Classes.success="{Binding IsRunning}" VerticalAlignment="Top">
+                      <TextBlock Text="{Binding StatusText}" />
+                    </Border>
+                    <Button Grid.Column="2" Theme="{StaticResource IconButton}" VerticalAlignment="Top"
+                            Command="{Binding UnfollowCommand}"
+                            AutomationProperties.Name="{Binding UnfollowName}" ToolTip.Tip="Stop following">
+                      <ctl:Icon Width="14" Height="14" Data="{StaticResource IconClose}" />
+                    </Button>
+                  </Grid>
+
+                  <Grid ColumnDefinitions="*,*" ColumnSpacing="12">
+                    <StackPanel Spacing="4">
+                      <Grid ColumnDefinitions="*,Auto">
+                        <ctl:CapsText Classes="label" Value="CPU" VerticalAlignment="Center" />
+                        <TextBlock Grid.Column="1" Classes="number" Text="{Binding CpuText}" />
+                      </Grid>
+                      <ctl:HistoryGraph Height="40" GridDivisions="4" Series="{Binding Cpu}" Maximum="100"
+                                        Stroke="{StaticResource SlSeries1}" />
+                    </StackPanel>
+                    <StackPanel Grid.Column="1" Spacing="4">
+                      <Grid ColumnDefinitions="*,Auto">
+                        <ctl:CapsText Classes="label" Value="Memory" VerticalAlignment="Center" />
+                        <TextBlock Grid.Column="1" Classes="number" Text="{Binding MemoryText}" />
+                      </Grid>
+                      <ctl:HistoryGraph Height="40" GridDivisions="4" Series="{Binding Memory}"
+                                        Maximum="{Binding MemoryMaximum}" Stroke="{StaticResource SlSeries2}" />
+                    </StackPanel>
+                  </Grid>
+                </StackPanel>
+              </Border>
+            </DataTemplate>
+          </ItemsControl.ItemTemplate>
+        </ItemsControl>
+      </ScrollViewer>
+    </StackPanel>
+  </Grid>
+</UserControl>

@@ -4,6 +4,7 @@ using Avalonia.Markup.Xaml;
 using Sockless.TaskManager.Core;
 using Sockless.TaskManager.Features.Memory;
 using Sockless.TaskManager.Features.Performance;
+using Sockless.TaskManager.Features.Processes;
 using Sockless.TaskManager.Shell;
 
 namespace Sockless.TaskManager;
@@ -22,6 +23,7 @@ public sealed class App : Application
             // Sidebar order follows this list.
             Feature[] features =
             [
+                new ProcessesFeature(clock),
                 PerformanceModule.Create(clock),
                 new MemoryFeature(clock),
             ];

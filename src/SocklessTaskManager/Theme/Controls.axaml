@@ -158,6 +158,127 @@
         </Style>
       </ControlTheme>
 
+      <!-- The chrome button as a plain button (dismiss, clear). Needs an AutomationProperties.Name. -->
+      <ControlTheme x:Key="IconButton" TargetType="Button">
+        <Setter Property="Foreground" Value="{StaticResource SlTextSecondary}" />
+        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="CornerRadius" Value="{StaticResource SlRadiusSm}" />
+        <Setter Property="Padding" Value="4" />
+        <Setter Property="Cursor" Value="Hand" />
+        <Setter Property="FocusAdorner" Value="{StaticResource SlFocusAdorner}" />
+        <Setter Property="Template">
+          <ControlTemplate>
+            <ContentPresenter Name="PART_ContentPresenter"
+                              Background="{TemplateBinding Background}"
+                              CornerRadius="{TemplateBinding CornerRadius}"
+                              Padding="{TemplateBinding Padding}"
+                              Content="{TemplateBinding Content}"
+                              Foreground="{TemplateBinding Foreground}" />
+          </ControlTemplate>
+        </Setter>
+        <Style Selector="^:pointerover">
+          <Setter Property="Foreground" Value="{StaticResource SlAccent}" />
+          <Setter Property="Background" Value="{StaticResource SlAccentTint10}" />
+        </Style>
+      </ControlTheme>
+
+      <!--
+        An icon toggle that recedes until it is on (follow star in table rows): steel when off,
+        copper-light when on or hovered. Pair the on state with another cue; colour alone isn't enough.
+      -->
+      <ControlTheme x:Key="IconToggle" TargetType="ToggleButton" BasedOn="{StaticResource ChromeButton}">
+        <Setter Property="Foreground" Value="{StaticResource SlInactiveIcon}" />
+        <Setter Property="Padding" Value="4" />
+        <Style Selector="^:checked">
+          <Setter Property="Foreground" Value="{StaticResource SlAccent}" />
+        </Style>
+      </ControlTheme>
+
+      <!--
+        One option of a segmented switch (list or tree). Radio semantics: exactly one is on.
+        Off: secondary text on a steel rim. On: accent text, 10% fill, 30% accent rim.
+      -->
+      <ControlTheme x:Key="SegmentButton" TargetType="RadioButton">
+        <Setter Property="Foreground" Value="{StaticResource SlTextSecondary}" />
+        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="BorderBrush" Value="{StaticResource SlBorder}" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="CornerRadius" Value="{StaticResource SlRadiusSm}" />
+        <Setter Property="Padding" Value="12,6" />
+        <Setter Property="FontSize" Value="{StaticResource SlTextSmall}" />
+        <Setter Property="FontWeight" Value="Medium" />
+        <Setter Property="Cursor" Value="Hand" />
+        <Setter Property="FocusAdorner" Value="{StaticResource SlFocusAdorner}" />
+        <Setter Property="Template">
+          <ControlTemplate>
+            <ContentPresenter Name="PART_ContentPresenter"
+                              Background="{TemplateBinding Background}"
+                              BorderBrush="{TemplateBinding BorderBrush}"
+                              BorderThickness="{TemplateBinding BorderThickness}"
+                              CornerRadius="{TemplateBinding CornerRadius}"
+                              Padding="{TemplateBinding Padding}"
+                              Content="{TemplateBinding Content}"
+                              Foreground="{TemplateBinding Foreground}"
+                              HorizontalContentAlignment="Center"
+                              VerticalContentAlignment="Center" />
+          </ControlTemplate>
+        </Setter>
+        <Style Selector="^:pointerover">
+          <Setter Property="Foreground" Value="{StaticResource SlAccent}" />
+        </Style>
+        <Style Selector="^:checked">
+          <Setter Property="Foreground" Value="{StaticResource SlAccent}" />
+          <Setter Property="Background" Value="{StaticResource SlAccentTint10}" />
+          <Setter Property="BorderBrush" Value="{StaticResource SlAccentTint30}" />
+        </Style>
+      </ControlTheme>
+
+      <!--
+        A sortable table column title. Secondary like the rest of the header; copper-light on hover
+        and while it is the sort column, which also shows a direction chevron.
+      -->
+      <ControlTheme x:Key="SortHeader" TargetType="Button">
+        <Setter Property="Foreground" Value="{StaticResource SlTextSecondary}" />
+        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="Padding" Value="0" />
+        <Setter Property="Cursor" Value="Hand" />
+        <Setter Property="FocusAdorner" Value="{StaticResource SlFocusAdorner}" />
+        <Setter Property="Template">
+          <ControlTemplate>
+            <ContentPresenter Name="PART_ContentPresenter"
+                              Background="{TemplateBinding Background}"
+                              Padding="{TemplateBinding Padding}"
+                              Content="{TemplateBinding Content}"
+                              Foreground="{TemplateBinding Foreground}" />
+          </ControlTemplate>
+        </Setter>
+        <Style Selector="^:pointerover">
+          <Setter Property="Foreground" Value="{StaticResource SlAccent}" />
+        </Style>
+        <Style Selector="^.active">
+          <Setter Property="Foreground" Value="{StaticResource SlAccent}" />
+        </Style>
+      </ControlTheme>
+
+      <!--
+        Text inputs (components.md → Forms): raised plate, steel border, copper border on focus in
+        place of the focus ring. These keys restyle Fluent's TextBox.
+      -->
+      <StaticResource x:Key="TextControlBackground" ResourceKey="SlRaised" />
+      <StaticResource x:Key="TextControlBackgroundPointerOver" ResourceKey="SlRaised" />
+      <StaticResource x:Key="TextControlBackgroundFocused" ResourceKey="SlRaised" />
+      <StaticResource x:Key="TextControlBorderBrush" ResourceKey="SlBorder" />
+      <StaticResource x:Key="TextControlBorderBrushPointerOver" ResourceKey="SlAccentLine" />
+      <StaticResource x:Key="TextControlBorderBrushFocused" ResourceKey="SlAccent" />
+      <StaticResource x:Key="TextControlForeground" ResourceKey="SlText" />
+      <StaticResource x:Key="TextControlForegroundPointerOver" ResourceKey="SlText" />
+      <StaticResource x:Key="TextControlForegroundFocused" ResourceKey="SlText" />
+      <StaticResource x:Key="TextControlPlaceholderForeground" ResourceKey="SlTextSecondary" />
+      <StaticResource x:Key="TextControlPlaceholderForegroundPointerOver" ResourceKey="SlTextSecondary" />
+      <StaticResource x:Key="TextControlPlaceholderForegroundFocused" ResourceKey="SlTextSecondary" />
+      <StaticResource x:Key="TextControlSelectionHighlightColor" ResourceKey="SlAccentTint30" />
+      <Thickness x:Key="TextControlBorderThemeThicknessFocused">1</Thickness>
+
       <!--
         Table row (components.md → Tables): 1px faint border below, a 5% tint on hover.
         A row that opens something is a button; one that doesn't is disabled, so it is skipped
@@ -312,6 +433,26 @@
     <Setter Property="FontSize" Value="{StaticResource SlTextSmall}" />
     <Setter Property="FontWeight" Value="Medium" />
     <Setter Property="Foreground" Value="{StaticResource SlTextSecondary}" />
+  </Style>
+  <!-- Sortable column titles follow their button (SortHeader) rather than the header's grey. -->
+  <Style Selector="Border.table-header Button:pointerover TextBlock, Border.table-header Button.active TextBlock">
+    <Setter Property="Foreground" Value="{StaticResource SlAccent}" />
+  </Style>
+
+  <!-- Status badge (components.md → Badges): a word on a 10% tint with a 25% rim. -->
+  <Style Selector="Border.badge">
+    <Setter Property="CornerRadius" Value="{StaticResource SlRadiusSm}" />
+    <Setter Property="Padding" Value="6,2" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="Background" Value="{StaticResource SlRaised}" />
+    <Setter Property="BorderBrush" Value="{StaticResource SlBorder}" />
+    <Setter Property="TextElement.Foreground" Value="{StaticResource SlTextSecondary}" />
+    <Setter Property="TextElement.FontSize" Value="{StaticResource SlTextSmall}" />
+  </Style>
+  <Style Selector="Border.badge.success">
+    <Setter Property="Background" Value="{StaticResource SlSuccessTint10}" />
+    <Setter Property="BorderBrush" Value="{StaticResource SlSuccessTint25}" />
+    <Setter Property="TextElement.Foreground" Value="{StaticResource SlSuccess}" />
   </Style>
 
   <Style Selector="ctl|HistoryGraph">

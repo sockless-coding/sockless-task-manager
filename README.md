@@ -4,6 +4,14 @@ A lightweight alternative to the Windows Task Manager, in the Sockless Workshop 
 
 ## What it does
 
+The **Processes** page lists every running process with its CPU, memory (private working set) and I/O rate:
+
+- **List** or **Tree**: one sorted list, or each process under the process that started it, with collapsible branches.
+- **Search** by name, path or PID (Ctrl+F; Esc clears). In the tree, a match's ancestors stay visible in quieter text so you can see what started it.
+- **Filters**: only followed processes, or only processes in your own Windows session (hides services and system processes).
+- **Sort** by any column; the order holds for a few seconds at a time so rows don't jump under the pointer.
+- **Follow** a process with the star: it gets a card below the table with a minute of CPU and memory history. Cards keep recording while you're on other pages, and show "Exited" when the process ends.
+
 The **Performance** page shows live graphs and figures for each device, the way Task Manager's Performance tab does:
 
 | Device | Graphs | Figures |
@@ -23,7 +31,7 @@ The **Memory** page shows what the RAM is holding and lets you drill into each p
 
 It only reads what the level on screen needs, and only while the page is visible. Address-space and driver-file scans run once when opened, with a Refresh button.
 
-Data comes from Windows APIs: performance counters via PDH, `GlobalMemoryStatusEx`, SMBIOS, storage IOCTLs and DXGI, plus `NtQuerySystemInformation` and process working-set queries for the Memory page. No WMI, no admin rights; run as administrator only to inspect elevated processes' address spaces.
+Data comes from Windows APIs: performance counters via PDH, `GlobalMemoryStatusEx`, SMBIOS, storage IOCTLs and DXGI, plus `NtQuerySystemInformation` and process working-set queries for the Processes and Memory pages. No WMI, no admin rights; run as administrator only to inspect elevated processes' address spaces.
 
 ## Footprint
 

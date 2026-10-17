@@ -1,9 +1,9 @@
 using System.Runtime.InteropServices;
 
-namespace Sockless.TaskManager.Features.Memory;
+namespace Sockless.TaskManager.Core.Interop;
 
 /// <summary>
-/// <c>NtQuerySystemInformation</c>, the call behind most breakdown readings. Every class used
+/// <c>NtQuerySystemInformation</c>, the call behind the Memory and Processes readings. Every class used
 /// here works without elevation. Layouts are the 64-bit ones (the app ships for x64), and
 /// buffers are parsed by offset.
 /// </summary>

@@ -1,4 +1,5 @@
 using System.Buffers.Binary;
+using Sockless.TaskManager.Core.Interop;
 
 namespace Sockless.TaskManager.Features.Memory;
 
