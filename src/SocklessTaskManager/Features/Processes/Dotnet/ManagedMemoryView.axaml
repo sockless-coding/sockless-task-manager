@@ -24,6 +24,28 @@
   </UserControl.Resources>
 
   <UserControl.Styles>
+    <!--
+      The table's columns: values, or (comparing) values beside their change since the snapshot
+      before. A grid marked "comparing" hides the value-only columns, and the other way round.
+    -->
+    <Style Selector="Grid.columns > :is(Control).column">
+      <Setter Property="Width" Value="100" />
+      <Setter Property="Margin" Value="16,0,0,0" />
+      <Setter Property="HorizontalAlignment" Value="Right" />
+    </Style>
+    <Style Selector="Grid.columns.comparing > :is(Control).values">
+      <Setter Property="IsVisible" Value="False" />
+    </Style>
+    <Style Selector="Grid.columns:not(.comparing) > :is(Control).changes">
+      <Setter Property="IsVisible" Value="False" />
+    </Style>
+    <Style Selector="Grid.columns > TextBlock.column">
+      <Setter Property="TextAlignment" Value="Right" />
+    </Style>
+    <Style Selector="Grid.columns > Button.column StackPanel">
+      <Setter Property="HorizontalAlignment" Value="Right" />
+    </Style>
+
     <Style Selector="TextBlock.cell">
       <Setter Property="FontFamily" Value="{StaticResource SlFontMono}" />
       <Setter Property="FontSize" Value="{StaticResource SlTextSmall}" />
@@ -103,12 +125,13 @@
     <!-- ========== Heap by type ========== -->
     <Border Grid.Row="2" Classes="card" Padding="0" ClipToBounds="True" IsVisible="{Binding HasCounters}">
       <Grid RowDefinitions="Auto,Auto,Auto,*">
-        <Grid Margin="24,16" ColumnDefinitions="*,Auto,Auto" ColumnSpacing="12">
+        <Grid Margin="24,16" ColumnDefinitions="*,Auto,Auto,Auto" ColumnSpacing="12">
           <StackPanel Spacing="2" VerticalAlignment="Center">
             <ctl:CapsText Classes="label" Value="Heap by type" />
             <TextBlock Classes="caption" TextWrapping="Wrap" Text="{Binding SnapshotSummary}" IsVisible="{Binding HasSnapshot}" />
+            <TextBlock Classes="caption" TextWrapping="Wrap" Text="{Binding CompareSummary}" IsVisible="{Binding IsComparing}" />
             <TextBlock Classes="caption" TextWrapping="Wrap" IsVisible="{Binding !HasSnapshot}"
-                       Text="A snapshot runs a full collection and pauses the process while the heap is walked: a moment for most, seconds for a heap of many gigabytes." />
+                       Text="A snapshot runs a full collection and pauses the process while the heap is walked: a moment for most, seconds for a heap of many gigabytes. Until the walk is sent, the process also holds it in memory: about a third of its heap." />
           </StackPanel>
           <TextBox Grid.Column="1" Width="240" VerticalContentAlignment="Center" IsVisible="{Binding HasSnapshot}"
                    Text="{Binding HeapFilter}" PlaceholderText="Filter by type name"
@@ -124,7 +147,12 @@
               </Button>
             </TextBox.InnerRightContent>
           </TextBox>
-          <Button Grid.Column="2" Theme="{StaticResource SoftButton}" Command="{Binding SnapshotCommand}"
+          <ToggleButton Grid.Column="2" Theme="{StaticResource SoftToggle}" VerticalAlignment="Center"
+                        IsChecked="{Binding IsComparing}" IsVisible="{Binding CanCompare}"
+                        ToolTip.Tip="How each type changed since the snapshot before: what keeps growing is what leaks">
+            <TextBlock Text="Compare with previous" />
+          </ToggleButton>
+          <Button Grid.Column="3" Theme="{StaticResource SoftButton}" Command="{Binding SnapshotCommand}"
                   IsEnabled="{Binding !IsSnapshotting}" VerticalAlignment="Center"
                   ToolTip.Tip="Run a full garbage collection and list every live object by type">
             <StackPanel Orientation="Horizontal" Spacing="6">
@@ -134,20 +162,36 @@
           </Button>
         </Grid>
 
-        <Border Grid.Row="1" Classes="callout" Classes.danger="{Binding SnapshotIsError}" Margin="24,0,24,16"
-                IsVisible="{Binding HasSnapshotStatus}">
-          <Grid ColumnDefinitions="Auto,*" ColumnSpacing="8">
-            <ctl:Icon Classes="status" Width="16" Height="16" VerticalAlignment="Top"
-                      Data="{StaticResource IconWarning}" IsVisible="{Binding SnapshotIsError}" />
-            <TextBlock Grid.Column="1" Text="{Binding SnapshotStatus}" TextWrapping="Wrap" FontSize="{StaticResource SlTextSmall}" />
-          </Grid>
-        </Border>
+        <StackPanel Grid.Row="1" Spacing="8" Margin="24,0,24,16">
+          <StackPanel.IsVisible>
+            <MultiBinding Converter="{x:Static BoolConverters.Or}">
+              <Binding Path="HasSnapshotStatus" />
+              <Binding Path="HasSnapshotWarning" />
+            </MultiBinding>
+          </StackPanel.IsVisible>
+          <Border Classes="callout warning" IsVisible="{Binding HasSnapshotWarning}">
+            <Grid ColumnDefinitions="Auto,*" ColumnSpacing="8">
+              <ctl:Icon Classes="status" Width="16" Height="16" VerticalAlignment="Top" Data="{StaticResource IconWarning}" />
+              <TextBlock Grid.Column="1" Text="{Binding SnapshotWarning}" TextWrapping="Wrap" FontSize="{StaticResource SlTextSmall}" />
+            </Grid>
+          </Border>
+          <Border Classes="callout" Classes.danger="{Binding SnapshotIsError}"
+                  IsVisible="{Binding HasSnapshotStatus}">
+            <Grid ColumnDefinitions="Auto,*" ColumnSpacing="8">
+              <ctl:Icon Classes="status" Width="16" Height="16" VerticalAlignment="Top"
+                        Data="{StaticResource IconWarning}" IsVisible="{Binding SnapshotIsError}" />
+              <TextBlock Grid.Column="1" Text="{Binding SnapshotStatus}" TextWrapping="Wrap" FontSize="{StaticResource SlTextSmall}" />
+            </Grid>
+          </Border>
+        </StackPanel>
 
-        <!-- Sizes sort largest first; share is of the heap's own bytes. -->
+        <!-- Sizes sort largest first; share is of the heap's own bytes. While comparing, the changes sort. -->
         <Border Grid.Row="2" Classes="table-header" BorderThickness="0,1" IsVisible="{Binding HasSnapshot}">
-          <Grid ColumnDefinitions="*,110,110,110,64" ColumnSpacing="16">
+          <Grid Classes="columns" Classes.comparing="{Binding IsComparing}"
+                ColumnDefinitions="*,Auto,Auto,Auto,Auto,Auto,Auto,Auto">
             <TextBlock Text="{Binding HeapCountText}" VerticalAlignment="Center" />
-            <Button Grid.Column="1" Theme="{StaticResource SortHeader}" HorizontalAlignment="Right"
+
+            <Button Grid.Column="1" Classes="column values" Theme="{StaticResource SortHeader}"
                     Classes.active="{Binding IsSortedByCount}" Command="{Binding SortByCountCommand}"
                     AutomationProperties.Name="Sort by objects">
               <StackPanel Orientation="Horizontal" Spacing="4">
@@ -156,7 +200,18 @@
                           IsVisible="{Binding IsSortedByCount}" />
               </StackPanel>
             </Button>
-            <Button Grid.Column="2" Theme="{StaticResource SortHeader}" HorizontalAlignment="Right"
+            <TextBlock Grid.Column="1" Classes="column changes" Text="Objects" TextAlignment="Right" VerticalAlignment="Center" />
+            <Button Grid.Column="2" Classes="column changes" Theme="{StaticResource SortHeader}"
+                    Classes.active="{Binding IsSortedByCount}" Command="{Binding SortByCountCommand}"
+                    AutomationProperties.Name="Sort by change in objects">
+              <StackPanel Orientation="Horizontal" Spacing="4">
+                <TextBlock Text="Change" />
+                <ctl:Icon Width="12" Height="12" VerticalAlignment="Center" Data="{StaticResource IconChevronDown}"
+                          IsVisible="{Binding IsSortedByCount}" />
+              </StackPanel>
+            </Button>
+
+            <Button Grid.Column="3" Classes="column values" Theme="{StaticResource SortHeader}"
                     Classes.active="{Binding IsSortedByBytes}" Command="{Binding SortByBytesCommand}"
                     AutomationProperties.Name="Sort by own size" ToolTip.Tip="The bytes of the objects themselves">
               <StackPanel Orientation="Horizontal" Spacing="4">
@@ -165,7 +220,18 @@
                           IsVisible="{Binding IsSortedByBytes}" />
               </StackPanel>
             </Button>
-            <Button Grid.Column="3" Theme="{StaticResource SortHeader}" HorizontalAlignment="Right"
+            <TextBlock Grid.Column="3" Classes="column changes" Text="Own size" TextAlignment="Right" VerticalAlignment="Center" />
+            <Button Grid.Column="4" Classes="column changes" Theme="{StaticResource SortHeader}"
+                    Classes.active="{Binding IsSortedByBytes}" Command="{Binding SortByBytesCommand}"
+                    AutomationProperties.Name="Sort by change in own size">
+              <StackPanel Orientation="Horizontal" Spacing="4">
+                <TextBlock Text="Change" />
+                <ctl:Icon Width="12" Height="12" VerticalAlignment="Center" Data="{StaticResource IconChevronDown}"
+                          IsVisible="{Binding IsSortedByBytes}" />
+              </StackPanel>
+            </Button>
+
+            <Button Grid.Column="5" Classes="column values" Theme="{StaticResource SortHeader}"
                     Classes.active="{Binding IsSortedByRetained}" Command="{Binding SortByRetainedCommand}"
                     IsEnabled="{Binding HasRetained}" AutomationProperties.Name="Sort by retained size"
                     ToolTip.Tip="What the objects keep alive: what a collection could free if they were gone">
@@ -175,7 +241,18 @@
                           IsVisible="{Binding IsSortedByRetained}" />
               </StackPanel>
             </Button>
-            <TextBlock Grid.Column="4" Text="Share" HorizontalAlignment="Right" VerticalAlignment="Center" />
+            <Button Grid.Column="6" Classes="column changes" Theme="{StaticResource SortHeader}"
+                    Classes.active="{Binding IsSortedByRetained}" Command="{Binding SortByRetainedCommand}"
+                    IsEnabled="{Binding HasRetained}" AutomationProperties.Name="Sort by change in retained size"
+                    ToolTip.Tip="How much more, or less, the objects keep alive than before">
+              <StackPanel Orientation="Horizontal" Spacing="4">
+                <TextBlock Text="Retained change" />
+                <ctl:Icon Width="12" Height="12" VerticalAlignment="Center" Data="{StaticResource IconChevronDown}"
+                          IsVisible="{Binding IsSortedByRetained}" />
+              </StackPanel>
+            </Button>
+
+            <TextBlock Grid.Column="7" Classes="column values" Width="64" Text="Share" TextAlignment="Right" VerticalAlignment="Center" />
           </Grid>
         </Border>
 
@@ -196,14 +273,18 @@
           <ItemsControl.ItemTemplate>
             <DataTemplate x:DataType="dotnet:HeapType">
               <Border Padding="24,8" BorderBrush="{StaticResource SlBorderFaint}" BorderThickness="0,0,0,1">
-                <Grid ColumnDefinitions="*,110,110,110,64" ColumnSpacing="16">
+                <Grid Classes="columns" ColumnDefinitions="*,Auto,Auto,Auto,Auto,Auto,Auto,Auto"
+                      Classes.comparing="{Binding $parent[ItemsControl].((dotnet:ManagedMemory)DataContext).IsComparing}">
                   <SelectableTextBlock FontFamily="{StaticResource SlFontMono}" FontSize="{StaticResource SlTextSmall}" VerticalAlignment="Center"
                                        Text="{Binding Name}" TextTrimming="CharacterEllipsis" ToolTip.Tip="{Binding FullName}"
                                        SelectionBrush="{StaticResource SlAccentTint30}" />
-                  <TextBlock Grid.Column="1" Classes="cell" Text="{Binding CountText}" />
-                  <TextBlock Grid.Column="2" Classes="cell" Text="{Binding BytesText}" />
-                  <TextBlock Grid.Column="3" Classes="cell" Text="{Binding RetainedText}" />
-                  <TextBlock Grid.Column="4" Classes="cell" Text="{Binding ShareText}" />
+                  <TextBlock Grid.Column="1" Classes="cell column" Text="{Binding CountText}" />
+                  <TextBlock Grid.Column="2" Classes="cell column changes" Text="{Binding CountChangeText}" />
+                  <TextBlock Grid.Column="3" Classes="cell column" Text="{Binding BytesText}" />
+                  <TextBlock Grid.Column="4" Classes="cell column changes" Text="{Binding BytesChangeText}" />
+                  <TextBlock Grid.Column="5" Classes="cell column values" Text="{Binding RetainedText}" />
+                  <TextBlock Grid.Column="6" Classes="cell column changes" Text="{Binding RetainedChangeText}" />
+                  <TextBlock Grid.Column="7" Classes="cell column values" Width="64" Text="{Binding ShareText}" />
                 </Grid>
               </Border>
             </DataTemplate>

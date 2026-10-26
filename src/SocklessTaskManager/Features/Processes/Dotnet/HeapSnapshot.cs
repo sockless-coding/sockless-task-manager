@@ -10,21 +10,47 @@ namespace Sockless.TaskManager.Features.Processes.Dotnet;
 internal sealed record HeapTypeTotals(string Name, long Count, long Bytes, long? Retained);
 
 /// <summary>Every object on the heap at one moment, by type.</summary>
-internal sealed record HeapSnapshot(IReadOnlyList<HeapTypeTotals> Types, long Objects, long Bytes, bool HasRetained, DateTime TakenAt);
+/// <param name="IsIncomplete">The runtime dropped part of the walk, its buffer full: the totals are low.</param>
+internal sealed record HeapSnapshot(IReadOnlyList<HeapTypeTotals> Types, long Objects, long Bytes, bool HasRetained,
+    bool IsIncomplete, DateTime TakenAt);
 
-/// <summary>A row of the heap table.</summary>
+/// <summary>
+/// A type in the latest snapshot and in the one before it, matched by name; either may lack it
+/// (a type that appeared, or one whose objects are all gone).
+/// </summary>
+/// <param name="RetainedChange">Null unless both snapshots worked out what types keep alive.</param>
+internal sealed record HeapTypePair(HeapTypeTotals? Now, HeapTypeTotals? Before, long? RetainedChange)
+{
+    public string Name => (Now ?? Before)!.Name;
+
+    public long Count => Now?.Count ?? 0;
+
+    public long Bytes => Now?.Bytes ?? 0;
+
+    public long? Retained => Now is null ? 0 : Now.Retained;
+
+    public long CountChange => Count - (Before?.Count ?? 0);
+
+    public long BytesChange => Bytes - (Before?.Bytes ?? 0);
+}
+
+/// <summary>A row of the heap table: a type now, and how it changed since the snapshot before.</summary>
 public sealed class HeapType
 {
-    internal HeapType(HeapTypeTotals totals, long heapBytes)
+    internal HeapType(HeapTypePair pair, long heapBytes)
     {
-        Name = TypeName.Short(totals.Name);
-        FullName = TypeName.Full(totals.Name);
-        CountText = Format.Number(totals.Count);
-        BytesText = Format.Bytes(totals.Bytes);
-        RetainedText = totals.Retained is { } retained ? Format.Bytes(retained) : "—";
+        Name = TypeName.Short(pair.Name);
+        FullName = TypeName.Full(pair.Name);
+        CountText = Format.Number(pair.Count);
+        BytesText = Format.Bytes(pair.Bytes);
+        RetainedText = pair.Retained is { } retained ? Format.Bytes(retained) : "—";
 
-        var percent = heapBytes > 0 ? 100.0 * totals.Bytes / heapBytes : 0;
+        var percent = heapBytes > 0 ? 100.0 * pair.Bytes / heapBytes : 0;
         ShareText = percent is > 0 and < 1 ? "<1%" : Format.Percent(percent);
+
+        CountChangeText = Signed(pair.CountChange, c => Format.Number(c));
+        BytesChangeText = Signed(pair.BytesChange, b => Format.Bytes(b));
+        RetainedChangeText = pair.RetainedChange is { } change ? Signed(change, b => Format.Bytes(b)) : "—";
     }
 
     /// <summary>"Dictionary&lt;String, List&lt;Int32&gt;&gt;".</summary>
@@ -44,6 +70,21 @@ public sealed class HeapType
 
     /// <summary>Own bytes as a share of the heap.</summary>
     public string ShareText { get; }
+
+    /// <summary>"+1,234", "−56" or "0", since the snapshot before.</summary>
+    public string CountChangeText { get; }
+
+    public string BytesChangeText { get; }
+
+    public string RetainedChangeText { get; }
+
+    /// <summary>The sign is written, so growth never depends on colour to be seen.</summary>
+    internal static string Signed(long change, Func<long, string> format) => change switch
+    {
+        > 0 => "+" + format(change),
+        < 0 => "−" + format(-change),
+        _ => "0",
+    };
 }
 
 /// <summary>
@@ -73,8 +114,14 @@ internal sealed class HeapWalk
 
     private const uint BackgroundGc = 1;
 
-    /// <summary>The walk produces events fast; a smaller buffer would drop some.</summary>
-    private const uint BufferMegabytes = 256;
+    /// <summary>
+    /// The runtime describes the heap faster than the pipe drains, so the session's buffer in the
+    /// process must hold most of the walk or the rest is dropped. The walk takes about 45 bytes an
+    /// object, a third to a half of the heap's size: three quarters of it, within these bounds.
+    /// Only what's written is allocated, and only until it's sent.
+    /// </summary>
+    private const long MinBufferMegabytes = 256;
+    private const long MaxBufferMegabytes = 4096;
 
     private static readonly TimeSpan HandshakeTimeout = TimeSpan.FromSeconds(5);
 
@@ -99,20 +146,23 @@ internal sealed class HeapWalk
     /// <summary>The walk is done, and what each type keeps alive is being worked out.</summary>
     public bool IsAnalyzing => _isAnalyzing;
 
-    public async Task<HeapSnapshot> RunAsync(int processId, CancellationToken cancel)
+    /// <param name="heapBytes">The GC heap's size from the counters, to size the buffer; 0 if unknown.</param>
+    public async Task<HeapSnapshot> RunAsync(int processId, long heapBytes, CancellationToken cancel)
     {
+        var bufferMegabytes = Math.Clamp(heapBytes * 3 / 4 / (1024 * 1024), MinBufferMegabytes, MaxBufferMegabytes);
         EventPipeSession session;
         using (var handshake = CancellationTokenSource.CreateLinkedTokenSource(cancel))
         {
             handshake.CancelAfter(HandshakeTimeout);
             session = await DiagnosticsPort.StartAsync(processId, RuntimeProvider,
                 GcKeyword | TypeKeyword | GcHeapDumpKeyword | GcHeapCollectKeyword | GcHeapAndTypeNamesKeyword,
-                VerboseLevel, null, BufferMegabytes, handshake.Token);
+                VerboseLevel, null, (uint)bufferMegabytes, handshake.Token);
         }
 
+        var nettrace = new NettraceReader(session.Stream);
         await using (session)
         {
-            var reading = new NettraceReader(session.Stream).ReadAsync(OnEvent, cancel);
+            var reading = nettrace.ReadAsync(OnEvent, cancel);
 
             // Wait for the collection to end, then stop: the runtime sends what it still holds and
             // ends the stream, so every object is in once reading finishes.
@@ -136,7 +186,7 @@ internal sealed class HeapWalk
 
         _isAnalyzing = true;
         cancel.ThrowIfCancellationRequested();
-        return Summarize();
+        return Summarize(nettrace.LostEvents > 0);
     }
 
     /// <summary>Reading task.</summary>
@@ -256,10 +306,11 @@ internal sealed class HeapWalk
         }
     }
 
-    private HeapSnapshot Summarize()
+    /// <param name="isIncomplete">The runtime dropped part of the walk: no graph to trust, and low totals.</param>
+    private HeapSnapshot Summarize(bool isIncomplete)
     {
         var takenAt = DateTime.Now;
-        var retainedByType = _graph.IsTooLarge ? null : _graph.RetainedByType();
+        var retainedByType = _graph.IsTooLarge || isIncomplete ? null : _graph.RetainedByType();
 
         // Types with the same name (loaded twice, in different load contexts) are one row.
         var byName = new Dictionary<string, (long Count, long Bytes, long Retained)>(StringComparer.Ordinal);
@@ -276,7 +327,7 @@ internal sealed class HeapWalk
         var types = byName
             .Select(t => new HeapTypeTotals(t.Key, t.Value.Count, t.Value.Bytes, retainedByType is null ? null : t.Value.Retained))
             .ToArray();
-        return new HeapSnapshot(types, objects, bytes, retainedByType is not null, takenAt);
+        return new HeapSnapshot(types, objects, bytes, retainedByType is not null, isIncomplete, takenAt);
     }
 }
 

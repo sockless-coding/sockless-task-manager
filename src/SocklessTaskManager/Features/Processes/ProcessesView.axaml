@@ -400,6 +400,10 @@
               <TextBlock Text="Short-lived" VerticalAlignment="Center" />
             </StackPanel>
           </ToggleButton>
+          <ToggleButton Theme="{StaticResource SoftToggle}" IsChecked="{Binding DotnetOnly}" IsVisible="{Binding IsRunningView}"
+                        ToolTip.Tip="Only .NET processes, whose details can show the runtime's memory">
+            <TextBlock Text=".NET" />
+          </ToggleButton>
           <ToggleButton Theme="{StaticResource SoftToggle}" IsChecked="{Binding ThisSessionOnly}"
                         ToolTip.Tip="Only processes in your Windows session; hides services and system processes">
             <TextBlock Text="My session" />
@@ -543,10 +547,16 @@
                             </Panel>
                             <TextBlock Grid.Column="2" Classes="name" Text="{Binding Name}" ToolTip.Tip="{Binding ToolTip}"
                                        TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
-                            <Border Grid.Column="3" Classes="badge warning" Padding="4,0" Margin="8,0,0,0"
-                                    VerticalAlignment="Center" IsVisible="{Binding IsSuspended}">
-                              <TextBlock Text="Suspended" FontSize="{StaticResource SlTextLabel}" />
-                            </Border>
+                            <StackPanel Grid.Column="3" Orientation="Horizontal" Spacing="6" Margin="8,0,0,0"
+                                        VerticalAlignment="Center">
+                              <Border Classes="badge" Padding="4,0" IsVisible="{Binding IsDotnet}"
+                                      ToolTip.Tip="A .NET process: its details can show the runtime's memory">
+                                <TextBlock Text=".NET" FontSize="{StaticResource SlTextLabel}" />
+                              </Border>
+                              <Border Classes="badge warning" Padding="4,0" IsVisible="{Binding IsSuspended}">
+                                <TextBlock Text="Suspended" FontSize="{StaticResource SlTextLabel}" />
+                              </Border>
+                            </StackPanel>
                           </Grid>
                           <ItemsControl Grid.Column="1" ItemsSource="{Binding Cells}">
                             <ItemsControl.ItemsPanel>

@@ -590,6 +590,10 @@
     <Setter Property="Background" Value="{StaticResource SlInfoTint5}" />
     <Setter Property="BorderBrush" Value="{StaticResource SlInfoTint20}" />
   </Style>
+  <Style Selector="Border.callout.warning">
+    <Setter Property="Background" Value="{StaticResource SlWarningTint5}" />
+    <Setter Property="BorderBrush" Value="{StaticResource SlWarningTint20}" />
+  </Style>
   <Style Selector="Border.callout.danger">
     <Setter Property="Background" Value="{StaticResource SlDangerTint5}" />
     <Setter Property="BorderBrush" Value="{StaticResource SlDangerTint20}" />
@@ -599,6 +603,9 @@
   </Style>
   <Style Selector="Border.callout.info ctl|Icon.status">
     <Setter Property="Foreground" Value="{StaticResource SlInfo}" />
+  </Style>
+  <Style Selector="Border.callout.warning ctl|Icon.status">
+    <Setter Property="Foreground" Value="{StaticResource SlWarning}" />
   </Style>
   <Style Selector="Border.callout.danger ctl|Icon.status">
     <Setter Property="Foreground" Value="{StaticResource SlDanger}" />

@@ -31,10 +31,12 @@ src/SocklessTaskManager/
     Processes/          a top-level feature: process list and tree, search, filters, followed processes,
                         details and actions (end, suspend, priority, affinity, dump file), ended processes (ETW when elevated),
                         a column chooser and column filters (TableColumn.cs, ColumnFilter.cs)
-      Dotnet/           .NET processes: GC counters and a heap-by-type snapshot with retained sizes, over the
-                        diagnostics IPC pipe and a hand-written nettrace reader that keeps Native AOT green
-                        (TraceEvent relies on reflection). A line in the details pane opens ManagedMemoryView,
-                        which takes the page's place until Esc
+      Dotnet/           .NET processes: GC counters and heap-by-type snapshots (retained sizes, compared with the
+                        one before), over the diagnostics IPC pipe and a hand-written nettrace reader that keeps
+                        Native AOT green (TraceEvent relies on reflection). The sampler lists the pipes every few
+                        seconds to mark .NET rows. A line in the details pane opens ManagedMemoryView, which takes
+                        the page's place until Esc. A heap walk needs the session buffer sized to the heap, or the
+                        runtime drops the rest silently: NettraceReader.LostEvents is how that's noticed
     Performance/        a top-level feature (one sidebar entry)
       PerformanceModule.cs   the list of device scanners for this feature
       Cpu/ Memory/ Disk/ Network/ Gpu/   one sub-slice per device kind

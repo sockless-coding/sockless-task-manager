@@ -72,6 +72,7 @@ public sealed class ProcessRow : ObservableObject
     private bool _isFollowed;
     private bool _isSelected;
     private bool _isSuspended;
+    private bool _isDotnet;
 
     internal ProcessRow(ProcessKey key, IReadOnlyList<TableColumn> columns, ProcessList owner)
     {
@@ -203,6 +204,13 @@ public sealed class ProcessRow : ObservableObject
         internal set => Set(ref _isSelected, value);
     }
 
+    /// <summary>Runs on .NET with diagnostics on, so the details can show its runtime's view of memory.</summary>
+    public bool IsDotnet
+    {
+        get => _isDotnet;
+        private set => Set(ref _isDotnet, value);
+    }
+
     /// <summary>Every thread is suspended. Shown as a badge with the word, not by colour alone.</summary>
     public bool IsSuspended
     {
@@ -254,6 +262,7 @@ public sealed class ProcessRow : ObservableObject
         IsFollowed = isFollowed;
         IsSelected = isSelected;
         IsSuspended = reading.IsSuspended;
+        IsDotnet = reading.IsDotnet;
     }
 
     /// <summary>One decimal, like Task Manager's process list; idle reads as a plain 0%.</summary>

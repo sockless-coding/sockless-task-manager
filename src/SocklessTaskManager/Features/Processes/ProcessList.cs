@@ -60,6 +60,7 @@ public sealed class ProcessList : ObservableObject, IDisposable
     private bool _isTree;
     private bool _followedOnly;
     private bool _thisSessionOnly;
+    private bool _dotnetOnly;
     private bool _showEnded;
     private bool _shortLivedOnly;
     private bool _isTracing;
@@ -229,6 +230,17 @@ public sealed class ProcessList : ObservableObject, IDisposable
         }
     }
 
+    /// <summary>Only .NET processes with a diagnostics port: the ones the details can say more about.</summary>
+    public bool DotnetOnly
+    {
+        get => _dotnetOnly;
+        set
+        {
+            if (Set(ref _dotnetOnly, value))
+                Changed();
+        }
+    }
+
     /// <summary>Only processes in the user's own Windows session: hides services and system processes.</summary>
     public bool ThisSessionOnly
     {
@@ -384,7 +396,7 @@ public sealed class ProcessList : ObservableObject, IDisposable
     /// <summary>Set by the view: asks where to save a dump, suggesting a file name. Null if cancelled.</summary>
     internal Func<string, Task<string?>>? PickDumpPath { get; set; }
 
-    private bool IsFiltering => _searchText.Length > 0 || _followedOnly || _thisSessionOnly || _filtered.Length > 0;
+    private bool IsFiltering => _searchText.Length > 0 || _followedOnly || _dotnetOnly || _thisSessionOnly || _filtered.Length > 0;
 
     private bool IsFilteringEnded => _searchText.Length > 0 || _shortLivedOnly || _thisSessionOnly;
 
@@ -1155,6 +1167,8 @@ public sealed class ProcessList : ObservableObject, IDisposable
         if (_thisSessionOnly && process.SessionId != _sessionId)
             return false;
         if (_followedOnly && !_followed.ContainsKey(process.Key))
+            return false;
+        if (_dotnetOnly && !process.IsDotnet)
             return false;
         foreach (var column in _filtered)
         {

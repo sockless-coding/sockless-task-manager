@@ -18,7 +18,7 @@ public sealed class ManagedMemory : ObservableObject
     private static readonly TimeSpan HandshakeTimeout = TimeSpan.FromSeconds(5);
 
     private readonly int _processId;
-    private readonly List<(HeapTypeTotals Totals, HeapType Row)> _heapRows = [];
+    private readonly List<(HeapTypePair Pair, HeapType Row)> _heapRows = [];
     private readonly Lock _lock = new();
     private readonly Dictionary<string, double> _latest = new(StringComparer.Ordinal);
     private readonly Dictionary<string, double> _totals = new(StringComparer.Ordinal);
@@ -47,7 +47,12 @@ public sealed class ManagedMemory : ObservableObject
     private string? _snapshotStatus;
     private bool _snapshotIsError;
     private string? _snapshotSummary;
+    private string? _snapshotWarning;
+    private long _heapBytes;
     private HeapSnapshot? _heap;
+    private HeapSnapshot? _previousHeap;
+    private bool _isComparing;
+    private string? _compareSummary;
     private HeapSort _sort = HeapSort.Bytes;
     private string _heapFilter = string.Empty;
     private string? _heapCountText;
@@ -207,6 +212,19 @@ public sealed class ManagedMemory : ObservableObject
 
     public bool HasSnapshot => _snapshotSummary is not null;
 
+    /// <summary>The last snapshot is incomplete, and why.</summary>
+    public string? SnapshotWarning
+    {
+        get => _snapshotWarning;
+        private set
+        {
+            if (Set(ref _snapshotWarning, value))
+                OnPropertyChanged(nameof(HasSnapshotWarning));
+        }
+    }
+
+    public bool HasSnapshotWarning => _snapshotWarning is not null;
+
     /// <summary>The last snapshot's types, sorted, matching <see cref="HeapFilter"/>.</summary>
     public ObservableCollection<HeapType> HeapTypes { get; } = [];
 
@@ -249,8 +267,40 @@ public sealed class ManagedMemory : ObservableObject
 
     public bool IsSortedByRetained => _sort == HeapSort.Retained;
 
-    /// <summary>The last snapshot knows what each type keeps alive.</summary>
-    public bool HasRetained => _heap?.HasRetained == true;
+    /// <summary>
+    /// The table can show or sort by what types keep alive: the last snapshot worked it out, and
+    /// when comparing, the one before it did too.
+    /// </summary>
+    public bool HasRetained => _heap?.HasRetained == true && (!_isComparing || _previousHeap?.HasRetained == true);
+
+    /// <summary>There's a snapshot before the last to compare it with.</summary>
+    public bool CanCompare => _previousHeap is not null;
+
+    /// <summary>
+    /// Show how each type changed since the snapshot before, and sort by the change: what grows
+    /// between two snapshots is what leaks.
+    /// </summary>
+    public bool IsComparing
+    {
+        get => _isComparing;
+        set
+        {
+            if (!Set(ref _isComparing, value && CanCompare))
+                return;
+            OnPropertyChanged(nameof(HasRetained));
+            if (!HasRetained && _sort == HeapSort.Retained)
+                Sort(HeapSort.Bytes);
+            UpdateCompareSummary();
+            ShowHeap();
+        }
+    }
+
+    /// <summary>"Since 14:03:12: +12,345 objects, +3.4 MB".</summary>
+    public string? CompareSummary
+    {
+        get => _compareSummary;
+        private set => Set(ref _compareSummary, value);
+    }
 
     /// <summary>Starts streaming counters, if the process has a diagnostics port. UI thread.</summary>
     internal void Start()
@@ -290,6 +340,7 @@ public sealed class ManagedMemory : ObservableObject
 
         var snapshot = new SnapshotJob();
         _snapshot = snapshot;
+        var heapBytes = _heapBytes;
         IsSnapshotting = true;
         SnapshotIsError = false;
         SnapshotStatus = "Starting a full collection…";
@@ -297,7 +348,7 @@ public sealed class ManagedMemory : ObservableObject
         {
             try
             {
-                snapshot.Result = await snapshot.Walk.RunAsync(_processId, snapshot.Cancel.Token);
+                snapshot.Result = await snapshot.Walk.RunAsync(_processId, heapBytes, snapshot.Cancel.Token);
 
                 // Working out the dominators of a big heap takes hundreds of MB, briefly. Hand
                 // it back to Windows now rather than whenever the GC next gets round to it.
@@ -329,19 +380,23 @@ public sealed class ManagedMemory : ObservableObject
 
         if (snapshot.Result is { } result)
         {
+            _previousHeap = _heap;
             _heap = result;
-            _heapRows.Clear();
-            foreach (var totals in result.Types)
-                _heapRows.Add((totals, new HeapType(totals, result.Bytes)));
+            BuildHeapRows();
+            OnPropertyChanged(nameof(CanCompare));
             OnPropertyChanged(nameof(HasRetained));
-            if (!result.HasRetained)
+            if (!HasRetained)
                 Sort(HeapSort.Bytes);
+            UpdateCompareSummary();
             ShowHeap();
 
             var retained = result.HasRetained
                 ? string.Empty
                 : $" · over {Format.Number(HeapGraph.MaxObjects)} objects, too many to work out what each type keeps alive";
             SnapshotSummary = $"{Format.Number(result.Objects)} objects · {Format.Bytes(result.Bytes)} · taken {result.TakenAt.ToString("T", System.Globalization.CultureInfo.CurrentCulture)}{retained}";
+            SnapshotWarning = result.IsIncomplete
+                ? "Incomplete: the runtime's buffer in the process filled up and part of the walk was dropped. The totals are low, and what types keep alive wasn't worked out."
+                : null;
             SnapshotStatus = null;
         }
         else if (snapshot.Error is { } error)
@@ -363,7 +418,53 @@ public sealed class ManagedMemory : ObservableObject
         IsSnapshotting = false;
     }
 
-    /// <summary>Largest first by the column chosen: descending only, as "what's biggest" is the question.</summary>
+    /// <summary>
+    /// The last snapshot's types, each matched by name with the snapshot before, plus the types
+    /// that were there before and are gone now (shown only when comparing).
+    /// </summary>
+    private void BuildHeapRows()
+    {
+        _heapRows.Clear();
+        if (_heap is not { } heap)
+            return;
+
+        var before = new Dictionary<string, HeapTypeTotals>(StringComparer.Ordinal);
+        foreach (var type in _previousHeap?.Types ?? [])
+            before[type.Name] = type;
+        var bothRetained = heap.HasRetained && _previousHeap?.HasRetained == true;
+
+        foreach (var now in heap.Types)
+        {
+            before.Remove(now.Name, out var then);
+            var retainedChange = bothRetained ? (now.Retained ?? 0) - (then?.Retained ?? 0) : (long?)null;
+            var pair = new HeapTypePair(now, then, retainedChange);
+            _heapRows.Add((pair, new HeapType(pair, heap.Bytes)));
+        }
+
+        foreach (var gone in before.Values)
+        {
+            var pair = new HeapTypePair(null, gone, bothRetained ? -(gone.Retained ?? 0) : null);
+            _heapRows.Add((pair, new HeapType(pair, heap.Bytes)));
+        }
+    }
+
+    private void UpdateCompareSummary()
+    {
+        if (!_isComparing || _heap is not { } now || _previousHeap is not { } then)
+        {
+            CompareSummary = null;
+            return;
+        }
+
+        CompareSummary = $"Since the snapshot at {then.TakenAt.ToString("T", System.Globalization.CultureInfo.CurrentCulture)}: "
+            + $"{HeapType.Signed(now.Objects - then.Objects, c => Format.Number(c))} objects, "
+            + $"{HeapType.Signed(now.Bytes - then.Bytes, b => Format.Bytes(b))}";
+    }
+
+    /// <summary>
+    /// Largest first by the column chosen: descending only, as "what's biggest" is the question.
+    /// While comparing, the columns are the changes, so the fastest-growing types come first.
+    /// </summary>
     private void Sort(HeapSort sort)
     {
         if (_sort == sort || (sort == HeapSort.Retained && !HasRetained))
@@ -386,22 +487,27 @@ public sealed class ManagedMemory : ObservableObject
         }
 
         var filter = _heapFilter.Trim();
+        var shown = _isComparing ? _heapRows : _heapRows.Where(r => r.Pair.Now is not null);
+        var total = shown.Count();
         var matching = filter.Length == 0
-            ? _heapRows
-            : _heapRows.Where(r => r.Row.FullName.Contains(filter, StringComparison.OrdinalIgnoreCase));
-        var sorted = _sort switch
+            ? shown
+            : shown.Where(r => r.Row.FullName.Contains(filter, StringComparison.OrdinalIgnoreCase));
+        var sorted = (_sort, _isComparing) switch
         {
-            HeapSort.Count => matching.OrderByDescending(r => r.Totals.Count),
-            HeapSort.Retained => matching.OrderByDescending(r => r.Totals.Retained).ThenByDescending(r => r.Totals.Bytes),
-            _ => matching.OrderByDescending(r => r.Totals.Bytes),
+            (HeapSort.Count, false) => matching.OrderByDescending(r => r.Pair.Count),
+            (HeapSort.Retained, false) => matching.OrderByDescending(r => r.Pair.Retained).ThenByDescending(r => r.Pair.Bytes),
+            (_, false) => matching.OrderByDescending(r => r.Pair.Bytes),
+            (HeapSort.Count, true) => matching.OrderByDescending(r => r.Pair.CountChange),
+            (HeapSort.Retained, true) => matching.OrderByDescending(r => r.Pair.RetainedChange).ThenByDescending(r => r.Pair.BytesChange),
+            (_, true) => matching.OrderByDescending(r => r.Pair.BytesChange),
         };
         foreach (var (_, row) in sorted)
             HeapTypes.Add(row);
 
         OnPropertyChanged(nameof(HasNoMatches));
         HeapCountText = filter.Length == 0
-            ? $"{Format.Number(_heapRows.Count)} types"
-            : $"{Format.Number(HeapTypes.Count)} of {Format.Number(_heapRows.Count)} types";
+            ? $"{Format.Number(total)} types"
+            : $"{Format.Number(HeapTypes.Count)} of {Format.Number(total)} types";
     }
 
     /// <summary>The counters that arrived since the last tick, into properties. UI thread.</summary>
@@ -435,6 +541,7 @@ public sealed class ManagedMemory : ObservableObject
         {
             Heap.Push(heap * RuntimeMegabyte / BytesPerMegabyte);
             HeapText = Format.Bytes(heap * RuntimeMegabyte);
+            _heapBytes = (long)(heap * RuntimeMegabyte);
             HeapMaximum = Format.NiceCeiling(Heap.Max(), 1);
         }
 

@@ -29,6 +29,30 @@ internal static partial class DiagnosticsPort
 
     private static ReadOnlySpan<byte> Magic => "DOTNET_IPC_V1\0"u8;
 
+    /// <summary>
+    /// Every process with a diagnostics port, from one listing of the pipes: a millisecond or so,
+    /// where asking each process would take one call per process.
+    /// </summary>
+    internal static HashSet<int> ListProcesses()
+    {
+        const string prefix = "dotnet-diagnostic-";
+        var ids = new HashSet<int>();
+        try
+        {
+            foreach (var path in Directory.EnumerateFiles(@"\\.\pipe\", prefix + "*"))
+            {
+                var name = path.AsSpan(path.LastIndexOf('\\') + 1);
+                if (name.StartsWith(prefix, StringComparison.Ordinal) && int.TryParse(name[prefix.Length..], out var id))
+                    ids.Add(id);
+            }
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+        }
+
+        return ids;
+    }
+
     /// <summary>Whether the process has a diagnostics port. Asks Windows about the pipe without connecting to it.</summary>
     internal static bool Exists(int processId) =>
         WaitNamedPipe($@"\\.\pipe\{PipeName(processId)}", 1) || Marshal.GetLastPInvokeError() != ErrorFileNotFound;

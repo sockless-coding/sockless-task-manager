@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using Sockless.TaskManager.Core.Interop;
+using Sockless.TaskManager.Features.Processes.Dotnet;
 
 namespace Sockless.TaskManager.Features.Processes;
 
@@ -16,6 +17,7 @@ internal readonly record struct ProcessKey(int Id, long CreateTime);
 /// <param name="ParentId">The creator's id, which may now belong to another process; <paramref name="Parent"/> is the checked link.</param>
 /// <param name="CommandLine">Only read while something shows it (<see cref="ProcessSampler.WantsCommandLine"/>).</param>
 /// <param name="Description">Only read while something shows it (<see cref="ProcessSampler.WantsDescription"/>).</param>
+/// <param name="IsDotnet">Has a .NET diagnostics port: a .NET (Core) runtime with diagnostics on.</param>
 internal sealed record ProcessReading(
     ProcessKey Key,
     ProcessKey? Parent,
@@ -35,7 +37,8 @@ internal sealed record ProcessReading(
     bool IsSuspended,
     int ParentId,
     string? CommandLine,
-    string? Description);
+    string? Description,
+    bool IsDotnet);
 
 /// <summary>One sampling pass. Built on the sampling thread, then only read.</summary>
 internal sealed class ProcessSnapshot
@@ -69,12 +72,16 @@ internal sealed class ProcessSnapshot
 /// Turns successive <see cref="SystemProcesses"/> readings into per-process rates. Path and owner
 /// are looked up once per process, when it is first seen. Command lines and file descriptions
 /// are looked up only while a column or filter needs them, a few per tick, so turning one on
-/// with hundreds of processes running doesn't stall a sample. Sampling thread only.
+/// with hundreds of processes running doesn't stall a sample. .NET processes are found by listing
+/// the diagnostics pipes every few seconds, not by asking each process. Sampling thread only.
 /// </summary>
 internal sealed class ProcessSampler
 {
     private const int CommandLinesPerSample = 64;
     private const int DescriptionsPerSample = 24;
+
+    /// <summary>A runtime opens its pipe just after it starts; this soon is soon enough to notice.</summary>
+    private const long DotnetListInterval = 3000;
 
     private readonly Dictionary<ProcessKey, Extra> _extras = [];
     private readonly Dictionary<string, string?> _accounts = [];
@@ -82,6 +89,8 @@ internal sealed class ProcessSampler
     private byte[] _buffer = NtSystem.Buffer(1024 * 1024);
     private Dictionary<ProcessKey, Counters> _previous = [];
     private long _previousTimestamp;
+    private HashSet<int> _dotnet = [];
+    private long _dotnetListedAt = -DotnetListInterval;
 
     /// <summary>Set from the UI thread when a column or filter shows command lines.</summary>
     public volatile bool WantsCommandLine;
@@ -108,6 +117,12 @@ internal sealed class ProcessSampler
         var wantsDescription = WantsDescription;
         var commandLines = CommandLinesPerSample;
         var descriptions = DescriptionsPerSample;
+
+        if (Environment.TickCount64 - _dotnetListedAt >= DotnetListInterval)
+        {
+            _dotnet = DiagnosticsPort.ListProcesses();
+            _dotnetListedAt = Environment.TickCount64;
+        }
 
         var current = new Dictionary<ProcessKey, Counters>(processes.Count);
         var readings = new List<ProcessReading>(processes.Count);
@@ -163,7 +178,8 @@ internal sealed class ProcessSampler
                 key, parent, p.Name, extra.Path, extra.User, p.SessionId, cpu, p.PrivateWorkingSet, io, p.Threads,
                 p.Handles, p.WorkingSet, p.Commit, p.IoBytes, p.BasePriority, p.IsSuspended, p.ParentId,
                 wantsCommandLine ? extra.CommandLine : null,
-                wantsDescription ? extra.Description : null));
+                wantsDescription ? extra.Description : null,
+                _dotnet.Contains(p.Id)));
         }
 
         foreach (var key in _extras.Keys)

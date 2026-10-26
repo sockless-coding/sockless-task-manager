@@ -29,9 +29,16 @@ internal sealed class NettraceReader(Stream stream)
     private const byte HasDataLength = 128;
 
     private readonly Dictionary<int, EventMetadata> _metadata = [];
+    private readonly Dictionary<ulong, uint> _sequences = [];
     private readonly byte[] _small = new byte[64];
     private byte[] _block = new byte[64 * 1024];
     private long _position;
+
+    /// <summary>
+    /// Events the runtime dropped, its buffer full when they were raised: seen as gaps in each
+    /// thread's numbering. Reading task.
+    /// </summary>
+    public long LostEvents { get; private set; }
 
     /// <summary>Calls <paramref name="handler"/> for each event until the stream ends.</summary>
     public async Task ReadAsync(TraceEventHandler handler, CancellationToken cancel)
@@ -116,6 +123,8 @@ internal sealed class NettraceReader(Stream stream)
         var reader = new SpanReader(block) { Offset = headerSize };
         var metadataId = 0;
         var payloadSize = 0;
+        var sequence = 0u;
+        var captureThread = 0ul;
         while (reader.Offset < block.Length)
         {
             var eventFlags = reader.Byte();
@@ -123,9 +132,13 @@ internal sealed class NettraceReader(Stream stream)
                 metadataId = (int)reader.VarUInt();
             if ((eventFlags & HasCaptureThreadAndSequence) != 0)
             {
-                reader.VarUInt(); // sequence number delta
-                reader.VarUInt(); // capture thread
+                sequence += (uint)reader.VarUInt() + 1;
+                captureThread = reader.VarUInt();
                 reader.VarUInt(); // processor
+            }
+            else if (metadataId != 0)
+            {
+                sequence++;
             }
 
             if ((eventFlags & HasThreadId) != 0)
@@ -147,11 +160,16 @@ internal sealed class NettraceReader(Stream stream)
             {
                 var metadata = EventMetadata.Read(payload);
                 _metadata[metadata.Id] = metadata;
+                continue;
             }
-            else if (_metadata.TryGetValue(metadataId, out var metadata))
-            {
-                handler(metadata, payload);
-            }
+
+            // Each thread numbers its events, dropped ones included: a jump is what was lost.
+            if (_sequences.TryGetValue(captureThread, out var last) && sequence > last + 1)
+                LostEvents += sequence - last - 1;
+            _sequences[captureThread] = sequence;
+
+            if (_metadata.TryGetValue(metadataId, out var known))
+                handler(known, payload);
         }
     }
 
