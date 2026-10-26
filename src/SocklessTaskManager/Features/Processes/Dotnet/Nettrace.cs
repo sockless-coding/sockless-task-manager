@@ -40,6 +40,9 @@ internal sealed class NettraceReader(Stream stream)
     /// </summary>
     public long LostEvents { get; private set; }
 
+    /// <summary>The traced process's pointer size: payloads holding addresses depend on it.</summary>
+    public int PointerSize { get; private set; } = 8;
+
     /// <summary>Calls <paramref name="handler"/> for each event until the stream ends.</summary>
     public async Task ReadAsync(TraceEventHandler handler, CancellationToken cancel)
     {
@@ -60,7 +63,9 @@ internal sealed class NettraceReader(Stream stream)
             var type = await ReadTypeAsync(cancel);
             if (type == "Trace")
             {
-                await ReadAsync(TraceObjectSize, cancel);
+                // Clock sync time and frequency, then the process's pointer size, id and processors.
+                var trace = await ReadAsync(TraceObjectSize, cancel);
+                PointerSize = BinaryPrimitives.ReadInt32LittleEndian(trace.AsSpan(32));
             }
             else
             {

@@ -33,6 +33,21 @@ internal static class ProcessControl
         | 0x01000   // MiniDumpWithThreadInfo
         | 0x40000;  // MiniDumpWithTokenInformation
 
+    /// <summary>
+    /// A heap dump, as dotnet-dump's: the process's own memory (heaps, stacks, the .NET heap)
+    /// without the executable images and files it maps, which can be read back from disk. Often
+    /// a fraction of a full dump, and enough for dotnet-dump and most native debugging.
+    /// </summary>
+    private const uint HeapDump =
+        0x00001     // MiniDumpWithDataSegs
+        | 0x00004   // MiniDumpWithHandleData
+        | 0x00020   // MiniDumpWithUnloadedModules
+        | 0x00200   // MiniDumpWithPrivateReadWriteMemory
+        | 0x00800   // MiniDumpWithFullMemoryInfo
+        | 0x01000   // MiniDumpWithThreadInfo
+        | 0x10000   // MiniDumpWithPrivateWriteCopyMemory
+        | 0x40000;  // MiniDumpWithTokenInformation
+
     public static Outcome End(ProcessKey key)
     {
         var opened = ProcessHandle.Open(key, ProcessNative.Terminate, out var handle);
@@ -120,7 +135,7 @@ internal static class ProcessControl
     /// Writes a full dump to <paramref name="path"/>. Windows pauses the process while it does,
     /// which takes as long as copying its memory. A failed dump leaves no file.
     /// </summary>
-    public static Outcome WriteDump(ProcessKey key, string path)
+    public static Outcome WriteDump(ProcessKey key, string path, bool heapOnly)
     {
         var opened = ProcessHandle.Open(key,
             ProcessNative.QueryInformation | ProcessNative.VmRead | ProcessNative.DuplicateHandle, out var handle);
@@ -134,7 +149,7 @@ internal static class ProcessControl
             try
             {
                 using var file = File.OpenHandle(path, FileMode.Create, FileAccess.ReadWrite);
-                written = ProcessNative.MiniDumpWriteDump(handle.Value, (uint)key.Id, file, FullDump, 0, 0, 0);
+                written = ProcessNative.MiniDumpWriteDump(handle.Value, (uint)key.Id, file, heapOnly ? HeapDump : FullDump, 0, 0, 0);
                 error = Marshal.GetLastPInvokeError();
             }
             catch (Exception e) when (e is IOException or UnauthorizedAccessException)

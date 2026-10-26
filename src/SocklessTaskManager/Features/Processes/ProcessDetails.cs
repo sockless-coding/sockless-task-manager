@@ -159,7 +159,7 @@ public sealed class ProcessDetails : ObservableObject
         _workingSet = new Fact("Working set", string.Empty);
         _commit = new Fact("Commit", string.Empty);
         _io = new Fact("I/O so far", string.Empty);
-        _managed = new ManagedMemory(reading.Key.Id, reading.Name, () => owner.OpenManaged(this), owner.CloseManaged);
+        _managed = new ManagedMemory(reading.Key.Id, reading.Name, () => owner.OpenManaged(this), owner.CloseManaged, owner.Copy);
 
         Update(reading);
         RebuildFacts();
@@ -190,7 +190,8 @@ public sealed class ProcessDetails : ObservableObject
         SuspendCommand = new RelayCommand(() => owner.SuspendOrResume(Key));
         FollowCommand = new RelayCommand(() => owner.Follow(Key));
         OpenLocationCommand = new RelayCommand(() => owner.OpenLocation(Path));
-        DumpCommand = new RelayCommand(() => owner.CreateDump(Key));
+        FullDumpCommand = new RelayCommand(() => owner.CreateDump(Key, heapOnly: false));
+        HeapDumpCommand = new RelayCommand(() => owner.CreateDump(Key, heapOnly: true));
         AllProcessorsCommand = new RelayCommand(SelectAllProcessors);
         DismissNoticeCommand = new RelayCommand(ClearNotice);
     }
@@ -368,7 +369,9 @@ public sealed class ProcessDetails : ObservableObject
         internal set => Set(ref _isDumping, value);
     }
 
-    public ICommand DumpCommand { get; }
+    public ICommand FullDumpCommand { get; }
+
+    public ICommand HeapDumpCommand { get; }
 
     public ICommand CloseCommand { get; }
 

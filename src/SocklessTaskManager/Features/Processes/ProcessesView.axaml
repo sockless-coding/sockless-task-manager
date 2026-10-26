@@ -89,11 +89,11 @@
 
     <!--
       The .NET line of the details pane (dotnet:ManagedMemory): the GC heap and a way into the
-      .NET memory page. Hidden unless the process has a .NET diagnostics port.
+      .NET runtime page. Hidden unless the process has a .NET diagnostics port.
     -->
     <DataTemplate x:Key="ManagedMemoryTemplate" x:DataType="dotnet:ManagedMemory">
       <StackPanel Spacing="6" IsVisible="{Binding IsPresent}">
-        <ctl:CapsText Classes="label" Value=".NET memory" />
+        <ctl:CapsText Classes="label" Value=".NET runtime" />
 
         <Border Classes="callout" Classes.danger="{Binding StatusIsError}" IsVisible="{Binding HasStatus}">
           <Grid ColumnDefinitions="Auto,*" ColumnSpacing="8">
@@ -117,7 +117,7 @@
           <TextBlock Grid.Column="1" Classes="mono" FontSize="{StaticResource SlTextSmall}" VerticalAlignment="Center"
                      Text="{Binding HeapText}" />
           <Button Grid.Column="2" Theme="{StaticResource SoftButton}" Padding="8,3" Command="{Binding OpenCommand}"
-                  ToolTip.Tip="GC counters, and what's on the heap by type">
+                  ToolTip.Tip="Its heap by type, allocations, exceptions and runtime counters">
             <StackPanel Orientation="Horizontal" Spacing="4">
               <TextBlock Text="Open" VerticalAlignment="Center" />
               <ctl:Icon Width="14" Height="14" Data="{StaticResource IconChevronRight}" />
@@ -182,12 +182,20 @@
                     <TextBlock Text="Open file location" VerticalAlignment="Center" />
                   </StackPanel>
                 </Button>
-                <Button Theme="{StaticResource SoftButton}" Command="{Binding DumpCommand}" IsVisible="{Binding IsAlive}"
-                        IsEnabled="{Binding !IsDumping}"
-                        ToolTip.Tip="Write all of its memory to a .dmp file, for Visual Studio, WinDbg or dotnet-dump. It's paused while the file is written.">
+                <Button Theme="{StaticResource SoftButton}" IsVisible="{Binding IsAlive}" IsEnabled="{Binding !IsDumping}"
+                        ToolTip.Tip="Write its memory to a .dmp file, for Visual Studio, WinDbg or dotnet-dump. It's paused while the file is written.">
+                  <Button.Flyout>
+                    <MenuFlyout Placement="BottomEdgeAlignedLeft">
+                      <MenuItem Header="Full dump…" Command="{Binding FullDumpCommand}"
+                                ToolTip.Tip="All of its memory, mapped files included: the largest, and opens anywhere" />
+                      <MenuItem Header="Heap dump…" Command="{Binding HeapDumpCommand}"
+                                ToolTip.Tip="Its own memory only: often far smaller, and enough for dotnet-dump and most debugging" />
+                    </MenuFlyout>
+                  </Button.Flyout>
                   <StackPanel Orientation="Horizontal" Spacing="6">
                     <ctl:Icon Width="14" Height="14" Data="{StaticResource IconDisk}" />
                     <TextBlock Text="Create dump file" VerticalAlignment="Center" />
+                    <ctl:Icon Width="12" Height="12" Data="{StaticResource IconChevronDown}" />
                   </StackPanel>
                 </Button>
               </WrapPanel>
@@ -531,7 +539,10 @@
                             <Separator />
                             <MenuItem Header="{Binding FollowText}" Command="{Binding FollowCommand}" />
                             <MenuItem Header="Open file location" Command="{Binding OpenLocationCommand}" IsEnabled="{Binding HasPath}" />
-                            <MenuItem Header="Create dump file…" Command="{Binding DumpCommand}" />
+                            <MenuItem Header="Create dump file">
+                              <MenuItem Header="Full dump…" Command="{Binding FullDumpCommand}" />
+                              <MenuItem Header="Heap dump…" Command="{Binding HeapDumpCommand}" />
+                            </MenuItem>
                           </ContextMenu>
                         </Button.ContextMenu>
                         <Grid ColumnDefinitions="*,Auto,24" ColumnSpacing="16">
@@ -717,7 +728,7 @@
       </StackPanel>
     </Grid>
 
-    <!-- ========== .NET memory of the selected process, in place of the page until closed ========== -->
+    <!-- ========== The .NET runtime page of the selected process, in place of the page until closed ========== -->
     <ContentControl Margin="{StaticResource SlContentPadding}" Content="{Binding ManagedPage}">
       <ContentControl.ContentTemplate>
         <DataTemplate x:DataType="dotnet:ManagedMemory">

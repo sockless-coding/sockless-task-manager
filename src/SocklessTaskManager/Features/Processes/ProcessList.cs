@@ -354,8 +354,15 @@ public sealed class ProcessList : ObservableObject, IDisposable
         get => _managedPage;
         private set
         {
-            if (Set(ref _managedPage, value))
-                OnPropertyChanged(nameof(HasManagedPage));
+            var previous = _managedPage;
+            if (!Set(ref _managedPage, value))
+                return;
+
+            if (previous is not null)
+                previous.IsPageOpen = false;
+            if (value is not null)
+                value.IsPageOpen = true;
+            OnPropertyChanged(nameof(HasManagedPage));
         }
     }
 
@@ -738,10 +745,11 @@ public sealed class ProcessList : ObservableObject, IDisposable
     }
 
     /// <summary>
-    /// Asks where to save, then writes a full dump off the UI thread. Windows pauses the process
-    /// until its memory is copied, so the notice says how much there is.
+    /// Asks where to save, then writes a dump off the UI thread: all memory, or with
+    /// <paramref name="heapOnly"/> only the process's own. Windows pauses the process until its
+    /// memory is copied, so the notice says how much there is.
     /// </summary>
-    internal async void CreateDump(ProcessKey key)
+    internal async void CreateDump(ProcessKey key, bool heapOnly)
     {
         if (_latest?.ByKey.GetValueOrDefault(key) is not { } reading || PickDumpPath is not { } pick)
             return;
@@ -756,13 +764,14 @@ public sealed class ProcessList : ObservableObject, IDisposable
         }
 
         var stamp = DateTime.Now.ToString("yyyyMMdd-HHmmss", CultureInfo.InvariantCulture);
-        var path = await pick($"{System.IO.Path.GetFileNameWithoutExtension(reading.Name)}_{key.Id}_{stamp}.dmp");
+        var kind = heapOnly ? "_heap" : string.Empty;
+        var path = await pick($"{System.IO.Path.GetFileNameWithoutExtension(reading.Name)}_{key.Id}_{stamp}{kind}.dmp");
         if (path is null)
             return;
 
         details.IsDumping = true;
-        details.ShowNotice($"Writing a dump of {reading.Name}. It's paused until its memory is copied, about {Format.Bytes(reading.Commit)}.", isError: false);
-        var outcome = await Task.Run(() => ProcessControl.WriteDump(key, path));
+        details.ShowNotice($"Writing a {(heapOnly ? "heap" : "full")} dump of {reading.Name}. It's paused until its memory is copied, up to {Format.Bytes(reading.Commit)}.", isError: false);
+        var outcome = await Task.Run(() => ProcessControl.WriteDump(key, path, heapOnly));
         details.IsDumping = false;
 
         if (outcome != Outcome.Done)

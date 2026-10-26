@@ -1,4 +1,5 @@
 using System.Buffers.Binary;
+using System.Collections.Concurrent;
 using System.IO.Pipes;
 using System.Runtime.InteropServices;
 using System.Security.Principal;
@@ -10,6 +11,8 @@ namespace Sockless.TaskManager.Features.Processes.Dotnet;
 /// The diagnostics port a .NET (Core) process opens: the named pipe dotnet-counters, dotnet-trace
 /// and dotnet-gcdump talk to. One command per connection; a tracing command keeps its connection
 /// and streams the session's events on it. Protocol: dotnet/diagnostics, ipc-protocol.md.
+/// Commands to a process go one at a time: starting and stopping sessions at the same moment
+/// can hang the runtime's diagnostics server for good (seen on .NET 10), and with it every tool.
 /// </summary>
 internal static partial class DiagnosticsPort
 {
@@ -26,6 +29,8 @@ internal static partial class DiagnosticsPort
 
     /// <summary>The runtime doesn't know the command: older than the one that added it.</summary>
     internal const uint UnknownCommand = 0x80131384;
+
+    private static readonly ConcurrentDictionary<int, SemaphoreSlim> Gates = new();
 
     private static ReadOnlySpan<byte> Magic => "DOTNET_IPC_V1\0"u8;
 
@@ -60,6 +65,7 @@ internal static partial class DiagnosticsPort
     /// <summary>The runtime's version, "9.0.3"; null before .NET 6, which can't say.</summary>
     internal static async Task<string?> RuntimeVersionAsync(int processId, CancellationToken cancel)
     {
+        using var turn = await TakeTurnAsync(processId, cancel);
         await using var pipe = await ConnectAsync(processId, cancel);
         await pipe.WriteAsync(Message(ProcessCommands, ProcessInfo2Command, []), cancel);
 
@@ -81,11 +87,16 @@ internal static partial class DiagnosticsPort
         return version?.Split('+')[0];
     }
 
+    /// <summary>Starts an EventPipe session with one provider.</summary>
+    internal static Task<EventPipeSession> StartAsync(int processId, string provider, ulong keywords, uint level, string? filter,
+        uint bufferMegabytes, CancellationToken cancel) =>
+        StartAsync(processId, [new EventPipeProvider(provider, keywords, level, filter)], bufferMegabytes, cancel);
+
     /// <summary>
-    /// Starts an EventPipe session with one provider. The returned session's stream carries its
-    /// events in the nettrace format until it's disposed, which stops it.
+    /// Starts an EventPipe session. The returned session's stream carries its events in the
+    /// nettrace format until it's disposed, which stops it.
     /// </summary>
-    internal static async Task<EventPipeSession> StartAsync(int processId, string provider, ulong keywords, uint level, string? filter,
+    internal static async Task<EventPipeSession> StartAsync(int processId, IReadOnlyList<EventPipeProvider> providers,
         uint bufferMegabytes, CancellationToken cancel)
     {
         var body = new MemoryStream();
@@ -94,13 +105,17 @@ internal static partial class DiagnosticsPort
             writer.Write(bufferMegabytes);  // most it may hold before dropping events
             writer.Write(NetTraceFormat);
             writer.Write((byte)0);          // no rundown: method and module lists aren't needed
-            writer.Write(1u);               // providers
-            writer.Write(keywords);
-            writer.Write(level);
-            WriteString(writer, provider);
-            WriteString(writer, filter);
+            writer.Write((uint)providers.Count);
+            foreach (var provider in providers)
+            {
+                writer.Write(provider.Keywords);
+                writer.Write(provider.Level);
+                WriteString(writer, provider.Name);
+                WriteString(writer, provider.Filter);
+            }
         }
 
+        using var turn = await TakeTurnAsync(processId, cancel);
         var pipe = await ConnectAsync(processId, cancel);
         try
         {
@@ -120,12 +135,26 @@ internal static partial class DiagnosticsPort
         var body = new byte[sizeof(ulong)];
         BinaryPrimitives.WriteUInt64LittleEndian(body, sessionId);
 
+        using var turn = await TakeTurnAsync(processId, cancel);
         await using var pipe = await ConnectAsync(processId, cancel);
         await pipe.WriteAsync(Message(EventPipeCommands, StopTracingCommand, body), cancel);
         await ReadResponseAsync(pipe, cancel);
     }
 
     private static string PipeName(int processId) => $"dotnet-diagnostic-{processId}";
+
+    /// <summary>Waits for this process's other commands to finish. Dispose to let the next one go.</summary>
+    private static async Task<Turn> TakeTurnAsync(int processId, CancellationToken cancel)
+    {
+        var gate = Gates.GetOrAdd(processId, static _ => new SemaphoreSlim(1, 1));
+        await gate.WaitAsync(cancel);
+        return new Turn(gate);
+    }
+
+    private sealed class Turn(SemaphoreSlim gate) : IDisposable
+    {
+        public void Dispose() => gate.Release();
+    }
 
     private static async Task<NamedPipeClientStream> ConnectAsync(int processId, CancellationToken cancel)
     {
@@ -204,6 +233,10 @@ internal static partial class DiagnosticsPort
     private static partial bool WaitNamedPipe(string name, uint timeout);
 }
 
+/// <summary>An event source to turn on in a session, and how much of it.</summary>
+/// <param name="Filter">Provider arguments, "EventCounterIntervalSec=1"; null for none.</param>
+internal sealed record EventPipeProvider(string Name, ulong Keywords, uint Level, string? Filter = null);
+
 /// <summary>The runtime answered with an error: an HRESULT.</summary>
 internal sealed class DiagnosticsException(uint code) : Exception($"The .NET runtime refused the request (0x{code:X8}).")
 {
@@ -218,8 +251,9 @@ internal sealed class EventPipeSession(int processId, ulong id, Stream stream) :
     public Stream Stream { get; } = stream;
 
     /// <summary>
-    /// Asks the runtime to stop: it sends what it still holds, then ends the stream. Better than
-    /// leaving it to notice the closed pipe on its next write. It may already be gone.
+    /// Asks the runtime to stop: it sends what it still holds, then ends the stream. Only while
+    /// the stream is still read: the runtime's stop waits for its writes, and a full pipe nobody
+    /// reads would hold it (and the diagnostics server) until the timeout. It may already be gone.
     /// </summary>
     public async Task StopAsync()
     {
@@ -237,9 +271,13 @@ internal sealed class EventPipeSession(int processId, ulong id, Stream stream) :
         }
     }
 
+    /// <summary>
+    /// Closes the stream first, which fails any write the runtime is stuck in, then makes sure
+    /// the session is stopped.
+    /// </summary>
     public async ValueTask DisposeAsync()
     {
-        await StopAsync();
         await Stream.DisposeAsync();
+        await StopAsync();
     }
 }

@@ -7,7 +7,7 @@ namespace Sockless.TaskManager.Features.Processes.Dotnet;
 /// <summary>
 /// A .NET process's memory as its runtime sees it: the GC counters, streamed over its diagnostics
 /// port once a second (what dotnet-counters shows), and on request a snapshot of the heap by type
-/// (what dotnet-gcdump shows). The details pane shows a line of it; the .NET memory page, the rest.
+/// (what dotnet-gcdump shows). The details pane shows a line of it; the .NET runtime page, the rest.
 /// Only a .NET (Core) process with diagnostics on has the port; for anything else neither shows.
 /// </summary>
 public sealed class ManagedMemory : ObservableObject
@@ -19,6 +19,7 @@ public sealed class ManagedMemory : ObservableObject
 
     private readonly int _processId;
     private readonly List<(HeapTypePair Pair, HeapType Row)> _heapRows = [];
+    private readonly List<HeapTypePair> _shownRows = [];
     private readonly Lock _lock = new();
     private readonly Dictionary<string, double> _latest = new(StringComparer.Ordinal);
     private readonly Dictionary<string, double> _totals = new(StringComparer.Ordinal);
@@ -34,6 +35,22 @@ public sealed class ManagedMemory : ObservableObject
     private readonly Fact _gen1Collections = new("Gen 1 GCs", "—");
     private readonly Fact _gen2Collections = new("Gen 2 GCs", "—");
     private readonly Fact _pauses = new("Paused", "—");
+    private readonly Fact _threads = new("Thread pool", "—");
+    private readonly Fact _queued = new("Queued work", "—");
+    private readonly Fact _completed = new("Work done", "—");
+    private readonly Fact _contention = new("Lock waits", "—");
+    private readonly Fact _timers = new("Timers", "—");
+    private readonly Fact _exceptionRate = new("Exceptions", "—");
+    private readonly Fact _assemblies = new("Assemblies", "—");
+    private readonly Fact _jitted = new("Methods jitted", "—");
+    private readonly Fact _jitTime = new("Time in JIT", "—");
+    private readonly Fact _cpu = new("CPU", "—");
+    private readonly Fact _workingSet = new("Working set", "—");
+    private readonly Fact _requestRate = new("Requests", "—");
+    private readonly Fact _currentRequests = new("In progress", "—");
+    private readonly Fact _totalRequests = new("Total", "—");
+    private readonly Fact _failedRequests = new("Failed", "—");
+    private readonly Action<string> _copy;
     private CancellationTokenSource? _run;
     private bool _isPresent;
     private bool _hasCounters;
@@ -48,6 +65,9 @@ public sealed class ManagedMemory : ObservableObject
     private bool _snapshotIsError;
     private string? _snapshotSummary;
     private string? _snapshotWarning;
+    private ManagedTab _tab;
+    private bool _hasWebCounters;
+    private bool _isPageOpen;
     private long _heapBytes;
     private HeapSnapshot? _heap;
     private HeapSnapshot? _previousHeap;
@@ -66,9 +86,10 @@ public sealed class ManagedMemory : ObservableObject
     private volatile string? _pendingVersion;
     private bool _received;
 
-    internal ManagedMemory(int processId, string processName, Action open, Action close)
+    internal ManagedMemory(int processId, string processName, Action open, Action close, Action<string> copy)
     {
         _processId = processId;
+        _copy = copy;
         ProcessName = processName;
         Generations = [_gen0, _gen1, _gen2, _large, _pinned];
         Collector = [_committed, _fragmentation, _allocations, _gen0Collections, _gen1Collections, _gen2Collections, _pauses];
@@ -79,6 +100,14 @@ public sealed class ManagedMemory : ObservableObject
         SortByBytesCommand = new RelayCommand(() => Sort(HeapSort.Bytes));
         SortByRetainedCommand = new RelayCommand(() => Sort(HeapSort.Retained));
         ClearHeapFilterCommand = new RelayCommand(() => HeapFilter = string.Empty);
+        Exceptions = new ExceptionFeed(processId);
+        Allocations = new AllocationFeed(processId);
+        Work = [_threads, _queued, _completed, _contention, _timers, _cpu];
+        Code = [_assemblies, _jitted, _jitTime, _exceptionRate, _workingSet];
+        Requests = [_requestRate, _currentRequests, _totalRequests, _failedRequests];
+        CopyHeapCommand = new RelayCommand(() => _copy(HeapAsText()));
+        CopyAllocationsCommand = new RelayCommand(() => _copy(Allocations.AsText()));
+        CopyExceptionsCommand = new RelayCommand(() => _copy(Exceptions.AsText()));
     }
 
     private enum HeapSort
@@ -88,14 +117,117 @@ public sealed class ManagedMemory : ObservableObject
         Retained,
     }
 
+    /// <summary>What the page's lower card shows.</summary>
+    private enum ManagedTab
+    {
+        Heap,
+        Allocations,
+        Exceptions,
+        Runtime,
+    }
+
     public string ProcessName { get; }
+
+    /// <summary>Exceptions as they're thrown, while the page is open.</summary>
+    public ExceptionFeed Exceptions { get; }
+
+    /// <summary>What's allocated, by type, while the page is open.</summary>
+    public AllocationFeed Allocations { get; }
+
+    // The lower card's switch: one radio button each.
+    public bool IsShowingHeap
+    {
+        get => _tab == ManagedTab.Heap;
+        set => ShowTab(ManagedTab.Heap, value);
+    }
+
+    public bool IsShowingAllocations
+    {
+        get => _tab == ManagedTab.Allocations;
+        set => ShowTab(ManagedTab.Allocations, value);
+    }
+
+    public bool IsShowingExceptions
+    {
+        get => _tab == ManagedTab.Exceptions;
+        set => ShowTab(ManagedTab.Exceptions, value);
+    }
+
+    public bool IsShowingRuntime
+    {
+        get => _tab == ManagedTab.Runtime;
+        set => ShowTab(ManagedTab.Runtime, value);
+    }
+
+    /// <summary>Threads, the thread pool, locks and timers.</summary>
+    public IReadOnlyList<Fact> Work { get; }
+
+    /// <summary>Assemblies, the JIT, exceptions and the working set.</summary>
+    public IReadOnlyList<Fact> Code { get; }
+
+    /// <summary>ASP.NET Core's request counters, for a web app.</summary>
+    public IReadOnlyList<Fact> Requests { get; }
+
+    /// <summary>The process is an ASP.NET Core app: its request counters arrive.</summary>
+    public bool HasWebCounters
+    {
+        get => _hasWebCounters;
+        private set => Set(ref _hasWebCounters, value);
+    }
+
+    public ICommand CopyHeapCommand { get; }
+
+    public ICommand CopyAllocationsCommand { get; }
+
+    public ICommand CopyExceptionsCommand { get; }
+
+    /// <summary>
+    /// The .NET page is on screen. Exceptions and allocations are followed only then: each costs
+    /// the process an event. UI thread.
+    /// </summary>
+    internal bool IsPageOpen
+    {
+        get => _isPageOpen;
+        set
+        {
+            _isPageOpen = value;
+            if (value && _run is not null)
+                StartFeeds();
+            else if (!value)
+                StopFeeds();
+        }
+    }
+
+    private void ShowTab(ManagedTab tab, bool show)
+    {
+        if (!show || _tab == tab)
+            return;
+
+        _tab = tab;
+        OnPropertyChanged(nameof(IsShowingHeap));
+        OnPropertyChanged(nameof(IsShowingAllocations));
+        OnPropertyChanged(nameof(IsShowingExceptions));
+        OnPropertyChanged(nameof(IsShowingRuntime));
+    }
+
+    private void StartFeeds()
+    {
+        Exceptions.Start();
+        Allocations.Start();
+    }
+
+    private void StopFeeds()
+    {
+        Exceptions.Stop();
+        Allocations.Stop();
+    }
 
     /// <summary>"PID 4120 · .NET 9.0.3".</summary>
     public string Subtitle => _runtimeText is null
         ? $"PID {_processId.ToString(System.Globalization.CultureInfo.CurrentCulture)}"
         : $"PID {_processId.ToString(System.Globalization.CultureInfo.CurrentCulture)} · {_runtimeText}";
 
-    /// <summary>Opens the .NET memory page.</summary>
+    /// <summary>Opens the .NET runtime page.</summary>
     public ICommand OpenCommand { get; }
 
     /// <summary>Back to the process list.</summary>
@@ -311,14 +443,17 @@ public sealed class ManagedMemory : ObservableObject
         _run = new CancellationTokenSource();
         var cancel = _run.Token;
         Task.Run(() => RunAsync(cancel), cancel);
+        if (_isPageOpen)
+            StartFeeds();
     }
 
-    /// <summary>Stops the session in the process. UI thread.</summary>
+    /// <summary>Stops the sessions in the process. UI thread.</summary>
     internal void Stop()
     {
         _run?.Cancel();
         _run?.Dispose();
         _run = null;
+        StopFeeds();
 
         if (_snapshot is { } snapshot)
         {
@@ -448,6 +583,30 @@ public sealed class ManagedMemory : ObservableObject
         }
     }
 
+    /// <summary>The heap table as shown (filtered, sorted, comparing or not), as tab-separated text.</summary>
+    private string HeapAsText()
+    {
+        var text = new System.Text.StringBuilder(_isComparing
+            ? "Type\tObjects\tObjects change\tOwn bytes\tOwn bytes change\tRetained bytes change"
+            : "Type\tObjects\tOwn bytes\tRetained bytes");
+        text.AppendLine();
+        foreach (var pair in _shownRows)
+        {
+            text.Append(TypeName.Full(pair.Name)).Append('\t').Append(pair.Count).Append('\t');
+            if (_isComparing)
+            {
+                text.Append(pair.CountChange).Append('\t').Append(pair.Bytes).Append('\t')
+                    .Append(pair.BytesChange).Append('\t').Append(pair.RetainedChange).AppendLine();
+            }
+            else
+            {
+                text.Append(pair.Bytes).Append('\t').Append(pair.Retained).AppendLine();
+            }
+        }
+
+        return text.ToString();
+    }
+
     private void UpdateCompareSummary()
     {
         if (!_isComparing || _heap is not { } now || _previousHeap is not { } then)
@@ -501,8 +660,12 @@ public sealed class ManagedMemory : ObservableObject
             (HeapSort.Retained, true) => matching.OrderByDescending(r => r.Pair.RetainedChange).ThenByDescending(r => r.Pair.BytesChange),
             (_, true) => matching.OrderByDescending(r => r.Pair.BytesChange),
         };
-        foreach (var (_, row) in sorted)
+        _shownRows.Clear();
+        foreach (var (pair, row) in sorted)
+        {
+            _shownRows.Add(pair);
             HeapTypes.Add(row);
+        }
 
         OnPropertyChanged(nameof(HasNoMatches));
         HeapCountText = filter.Length == 0
@@ -513,6 +676,8 @@ public sealed class ManagedMemory : ObservableObject
     /// <summary>The counters that arrived since the last tick, into properties. UI thread.</summary>
     internal void Apply()
     {
+        Exceptions.Apply();
+        Allocations.Apply();
         IsPresent = _pendingPresent;
         Status = _pendingStatus;
         StatusIsError = _pendingIsError;
@@ -553,6 +718,27 @@ public sealed class ManagedMemory : ObservableObject
         _fragmentation.Value = latest.TryGetValue("gc-fragmentation", out var fragmentation) ? Format.Percent(fragmentation) : "—";
         _committed.Value = latest.TryGetValue("gc-committed", out var committed) ? Format.Bytes(committed * RuntimeMegabyte) : "—";
         _allocations.Value = latest.TryGetValue("alloc-rate", out var rate) ? Format.BytesPerSecond(rate) : "—";
+
+        _threads.Value = CountOf(latest, "threadpool-thread-count", " threads");
+        _queued.Value = CountOf(latest, "threadpool-queue-length", " items");
+        _completed.Value = CountOf(latest, "threadpool-completed-items-count", " items/s");
+        _contention.Value = CountOf(latest, "monitor-lock-contention-count", "/s");
+        _timers.Value = CountOf(latest, "active-timer-count", " active");
+        _cpu.Value = latest.TryGetValue("cpu-usage", out var cpu) ? Format.Percent(cpu) : "—";
+        _assemblies.Value = CountOf(latest, "assembly-count", " loaded");
+        _jitted.Value = CountOf(latest, "methods-jitted-count", string.Empty);
+        _jitTime.Value = totals.TryGetValue("time-in-jit", out var jit) ? Format.Milliseconds(jit) : "—";
+        _exceptionRate.Value = CountOf(latest, "exception-count", "/s");
+        _workingSet.Value = latest.TryGetValue("working-set", out var workingSet) ? Format.Bytes(workingSet * RuntimeMegabyte) : "—";
+
+        if (latest.ContainsKey("total-requests"))
+        {
+            HasWebCounters = true;
+            _requestRate.Value = CountOf(latest, "requests-per-second", "/s");
+            _currentRequests.Value = CountOf(latest, "current-requests", string.Empty);
+            _totalRequests.Value = CountOf(latest, "total-requests", string.Empty);
+            _failedRequests.Value = CountOf(latest, "failed-requests", string.Empty);
+        }
         _gen0Collections.Value = CountOf(totals, "gen-0-gc-count");
         _gen1Collections.Value = CountOf(totals, "gen-1-gc-count");
         _gen2Collections.Value = CountOf(totals, "gen-2-gc-count");
@@ -564,8 +750,8 @@ public sealed class ManagedMemory : ObservableObject
     private static string BytesOf(Dictionary<string, double> values, string name) =>
         values.TryGetValue(name, out var bytes) ? Format.Bytes(bytes) : "—";
 
-    private static string CountOf(Dictionary<string, double> values, string name) =>
-        values.TryGetValue(name, out var count) ? Format.Number((long)count) : "—";
+    private static string CountOf(Dictionary<string, double> values, string name, string unit = "") =>
+        values.TryGetValue(name, out var count) ? Format.Number((long)Math.Round(count)) + unit : "—";
 
     private async Task RunAsync(CancellationToken cancel)
     {
@@ -583,8 +769,11 @@ public sealed class ManagedMemory : ObservableObject
             {
                 handshake.CancelAfter(HandshakeTimeout);
                 _pendingVersion = await DiagnosticsPort.RuntimeVersionAsync(_processId, handshake.Token);
-                session = await DiagnosticsPort.StartAsync(_processId, "System.Runtime", 0xFFFFFFFF, VerboseLevel,
-                    "EventCounterIntervalSec=1", 4, handshake.Token);
+                session = await DiagnosticsPort.StartAsync(_processId,
+                [
+                    new EventPipeProvider("System.Runtime", 0xFFFFFFFF, VerboseLevel, "EventCounterIntervalSec=1"),
+                    new EventPipeProvider("Microsoft.AspNetCore.Hosting", 0xFFFFFFFF, VerboseLevel, "EventCounterIntervalSec=1"),
+                ], 4, handshake.Token);
             }
 
             _pendingStatus = "Waiting for the first counters…";

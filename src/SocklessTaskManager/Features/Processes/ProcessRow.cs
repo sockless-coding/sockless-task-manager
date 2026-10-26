@@ -86,7 +86,8 @@ public sealed class ProcessRow : ObservableObject
         EndTreeCommand = new RelayCommand(() => owner.RequestEnd(Key, tree: true));
         SuspendCommand = new RelayCommand(() => owner.SuspendOrResume(Key));
         OpenLocationCommand = new RelayCommand(() => owner.OpenLocation(_path));
-        DumpCommand = new RelayCommand(() => owner.CreateDump(Key));
+        FullDumpCommand = new RelayCommand(() => owner.CreateDump(Key, heapOnly: false));
+        HeapDumpCommand = new RelayCommand(() => owner.CreateDump(Key, heapOnly: true));
     }
 
     internal ProcessKey Key { get; }
@@ -107,7 +108,9 @@ public sealed class ProcessRow : ObservableObject
 
     public ICommand OpenLocationCommand { get; }
 
-    public ICommand DumpCommand { get; }
+    public ICommand FullDumpCommand { get; }
+
+    public ICommand HeapDumpCommand { get; }
 
     /// <summary>The executable's folder can only be opened when its path could be read.</summary>
     public bool HasPath => _path is not null;

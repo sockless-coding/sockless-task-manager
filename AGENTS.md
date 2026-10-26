@@ -29,14 +29,19 @@ src/SocklessTaskManager/
   Shell/                main window: sidebar, top bar, page host
   Features/
     Processes/          a top-level feature: process list and tree, search, filters, followed processes,
-                        details and actions (end, suspend, priority, affinity, dump file), ended processes (ETW when elevated),
+                        details and actions (end, suspend, priority, affinity, full or heap dump file), ended processes (ETW when elevated),
                         a column chooser and column filters (TableColumn.cs, ColumnFilter.cs)
-      Dotnet/           .NET processes: GC counters and heap-by-type snapshots (retained sizes, compared with the
-                        one before), over the diagnostics IPC pipe and a hand-written nettrace reader that keeps
-                        Native AOT green (TraceEvent relies on reflection). The sampler lists the pipes every few
-                        seconds to mark .NET rows. A line in the details pane opens ManagedMemoryView, which takes
-                        the page's place until Esc. A heap walk needs the session buffer sized to the heap, or the
-                        runtime drops the rest silently: NettraceReader.LostEvents is how that's noticed
+      Dotnet/           .NET processes: GC and runtime counters, heap-by-type snapshots (retained sizes, compared
+                        with the one before), allocations and thrown exceptions, over the diagnostics IPC pipe and a
+                        hand-written nettrace reader that keeps Native AOT green (TraceEvent relies on reflection).
+                        The sampler lists the pipes every few seconds to mark .NET rows. A line in the details pane
+                        opens ManagedMemoryView (".NET runtime"), which takes the page's place until Esc;
+                        allocations and exceptions (RuntimeFeed) are followed only while it's open. Two traps:
+                        - DiagnosticsPort sends one command per process at a time, and a session closes its pipe
+                          before it's stopped. Overlapping starts and stops hang the runtime's diagnostics server
+                          for good, and a stop with a full, unread pipe blocks it.
+                        - A heap walk needs the session buffer sized to the heap, or the runtime drops the rest
+                          silently: NettraceReader.LostEvents is how that's noticed.
     Performance/        a top-level feature (one sidebar entry)
       PerformanceModule.cs   the list of device scanners for this feature
       Cpu/ Memory/ Disk/ Network/ Gpu/   one sub-slice per device kind

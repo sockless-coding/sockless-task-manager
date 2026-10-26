@@ -1,8 +1,9 @@
 <!--
-  The .NET memory page, opened from a process's details: breadcrumbs back to the process list,
-  the GC heap over time beside where it is by generation and what the collector is doing, then
-  the heap by type filling the rest. Only the type table scrolls, and it is virtualized, so every
-  type is listed. Taking a snapshot pauses the process, so it waits for the button.
+  The .NET runtime page, opened from a process's details: breadcrumbs back to the process list,
+  the GC heap over time beside where it is by generation and what the collector is doing, then a
+  card filling the rest with the heap by type, allocations, exceptions or the runtime's other
+  counters. Only its tables scroll, and they are virtualized. Taking a snapshot pauses the
+  process, so it waits for the button; allocations and exceptions are followed while the page is open.
 -->
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
@@ -67,7 +68,7 @@
         </Button>
         <TextBlock Text="/" Margin="8,0" Classes="mono" FontSize="{StaticResource SlTextSmall}"
                    Foreground="{StaticResource SlBorderAccent}" />
-        <TextBlock Classes="mono secondary" FontSize="{StaticResource SlTextSmall}" Text=".NET memory" />
+        <TextBlock Classes="mono secondary" FontSize="{StaticResource SlTextSmall}" Text=".NET runtime" />
       </StackPanel>
 
       <Grid ColumnDefinitions="*,Auto" ColumnSpacing="24">
@@ -100,7 +101,7 @@
     </StackPanel>
 
     <!-- ========== Counters ========== -->
-    <Grid Grid.Row="1" ColumnDefinitions="2*,*,*" ColumnSpacing="16" Margin="0,0,0,16" IsVisible="{Binding HasCounters}">
+    <Grid Grid.Row="1" ColumnDefinitions="5*,3*,3*" ColumnSpacing="16" Margin="0,0,0,16" IsVisible="{Binding HasCounters}">
       <Border Classes="card">
         <ctl:GraphFrame Caption="GC heap over 60 seconds" Scale="{Binding HeapScale}" MinHeight="150">
           <ctl:HistoryGraph Series="{Binding Heap}" Maximum="{Binding HeapMaximum}" Stroke="{StaticResource SlSeries3}" />
@@ -122,177 +123,373 @@
       </Border>
     </Grid>
 
-    <!-- ========== Heap by type ========== -->
+    <!-- ========== Heap by type, or exceptions ========== -->
     <Border Grid.Row="2" Classes="card" Padding="0" ClipToBounds="True" IsVisible="{Binding HasCounters}">
-      <Grid RowDefinitions="Auto,Auto,Auto,*">
-        <Grid Margin="24,16" ColumnDefinitions="*,Auto,Auto,Auto" ColumnSpacing="12">
-          <StackPanel Spacing="2" VerticalAlignment="Center">
-            <ctl:CapsText Classes="label" Value="Heap by type" />
-            <TextBlock Classes="caption" TextWrapping="Wrap" Text="{Binding SnapshotSummary}" IsVisible="{Binding HasSnapshot}" />
-            <TextBlock Classes="caption" TextWrapping="Wrap" Text="{Binding CompareSummary}" IsVisible="{Binding IsComparing}" />
-            <TextBlock Classes="caption" TextWrapping="Wrap" IsVisible="{Binding !HasSnapshot}"
-                       Text="A snapshot runs a full collection and pauses the process while the heap is walked: a moment for most, seconds for a heap of many gigabytes. Until the walk is sent, the process also holds it in memory: about a third of its heap." />
-          </StackPanel>
-          <TextBox Grid.Column="1" Width="240" VerticalContentAlignment="Center" IsVisible="{Binding HasSnapshot}"
-                   Text="{Binding HeapFilter}" PlaceholderText="Filter by type name"
-                   AutomationProperties.Name="Filter types">
-            <TextBox.InnerLeftContent>
-              <ctl:Icon Width="16" Height="16" Margin="10,0,0,0" Foreground="{StaticResource SlTextSecondary}"
-                        Data="{StaticResource IconSearch}" />
-            </TextBox.InnerLeftContent>
-            <TextBox.InnerRightContent>
-              <Button Theme="{StaticResource IconButton}" Margin="0,0,4,0" IsVisible="{Binding HasHeapFilter}"
-                      Command="{Binding ClearHeapFilterCommand}" AutomationProperties.Name="Clear filter">
-                <ctl:Icon Width="14" Height="14" Data="{StaticResource IconClose}" />
-              </Button>
-            </TextBox.InnerRightContent>
-          </TextBox>
-          <ToggleButton Grid.Column="2" Theme="{StaticResource SoftToggle}" VerticalAlignment="Center"
-                        IsChecked="{Binding IsComparing}" IsVisible="{Binding CanCompare}"
-                        ToolTip.Tip="How each type changed since the snapshot before: what keeps growing is what leaks">
-            <TextBlock Text="Compare with previous" />
-          </ToggleButton>
-          <Button Grid.Column="3" Theme="{StaticResource SoftButton}" Command="{Binding SnapshotCommand}"
-                  IsEnabled="{Binding !IsSnapshotting}" VerticalAlignment="Center"
-                  ToolTip.Tip="Run a full garbage collection and list every live object by type">
-            <StackPanel Orientation="Horizontal" Spacing="6">
-              <ctl:Icon Width="14" Height="14" Data="{StaticResource IconMemory}" />
-              <TextBlock Text="Snapshot heap" VerticalAlignment="Center" />
-            </StackPanel>
-          </Button>
-        </Grid>
-
-        <StackPanel Grid.Row="1" Spacing="8" Margin="24,0,24,16">
-          <StackPanel.IsVisible>
-            <MultiBinding Converter="{x:Static BoolConverters.Or}">
-              <Binding Path="HasSnapshotStatus" />
-              <Binding Path="HasSnapshotWarning" />
-            </MultiBinding>
-          </StackPanel.IsVisible>
-          <Border Classes="callout warning" IsVisible="{Binding HasSnapshotWarning}">
-            <Grid ColumnDefinitions="Auto,*" ColumnSpacing="8">
-              <ctl:Icon Classes="status" Width="16" Height="16" VerticalAlignment="Top" Data="{StaticResource IconWarning}" />
-              <TextBlock Grid.Column="1" Text="{Binding SnapshotWarning}" TextWrapping="Wrap" FontSize="{StaticResource SlTextSmall}" />
-            </Grid>
-          </Border>
-          <Border Classes="callout" Classes.danger="{Binding SnapshotIsError}"
-                  IsVisible="{Binding HasSnapshotStatus}">
-            <Grid ColumnDefinitions="Auto,*" ColumnSpacing="8">
-              <ctl:Icon Classes="status" Width="16" Height="16" VerticalAlignment="Top"
-                        Data="{StaticResource IconWarning}" IsVisible="{Binding SnapshotIsError}" />
-              <TextBlock Grid.Column="1" Text="{Binding SnapshotStatus}" TextWrapping="Wrap" FontSize="{StaticResource SlTextSmall}" />
-            </Grid>
-          </Border>
+      <Grid RowDefinitions="Auto,*">
+        <StackPanel Orientation="Horizontal" Spacing="4" Margin="24,16,24,0" AutomationProperties.Name="Show">
+          <RadioButton Theme="{StaticResource SegmentButton}" GroupName="ManagedView" Content="Heap by type"
+                       IsChecked="{Binding IsShowingHeap}" ToolTip.Tip="What's on the heap, by type, from a snapshot" />
+          <RadioButton Theme="{StaticResource SegmentButton}" GroupName="ManagedView" Content="Allocations"
+                       IsChecked="{Binding IsShowingAllocations}" ToolTip.Tip="What it allocates, by type, while this page is open" />
+          <RadioButton Theme="{StaticResource SegmentButton}" GroupName="ManagedView" Content="{Binding Exceptions.TabText}"
+                       IsChecked="{Binding IsShowingExceptions}" ToolTip.Tip="Exceptions as they're thrown, while this page is open" />
+          <RadioButton Theme="{StaticResource SegmentButton}" GroupName="ManagedView" Content="Runtime"
+                       IsChecked="{Binding IsShowingRuntime}" ToolTip.Tip="Threads, locks, the JIT and, for a web app, its requests" />
         </StackPanel>
 
-        <!-- Sizes sort largest first; share is of the heap's own bytes. While comparing, the changes sort. -->
-        <Border Grid.Row="2" Classes="table-header" BorderThickness="0,1" IsVisible="{Binding HasSnapshot}">
-          <Grid Classes="columns" Classes.comparing="{Binding IsComparing}"
-                ColumnDefinitions="*,Auto,Auto,Auto,Auto,Auto,Auto,Auto">
-            <TextBlock Text="{Binding HeapCountText}" VerticalAlignment="Center" />
-
-            <Button Grid.Column="1" Classes="column values" Theme="{StaticResource SortHeader}"
-                    Classes.active="{Binding IsSortedByCount}" Command="{Binding SortByCountCommand}"
-                    AutomationProperties.Name="Sort by objects">
-              <StackPanel Orientation="Horizontal" Spacing="4">
-                <TextBlock Text="Objects" />
-                <ctl:Icon Width="12" Height="12" VerticalAlignment="Center" Data="{StaticResource IconChevronDown}"
-                          IsVisible="{Binding IsSortedByCount}" />
+        <Grid Grid.Row="1" RowDefinitions="Auto,Auto,Auto,*" IsVisible="{Binding IsShowingHeap}">
+          <Grid Margin="24,12,24,16" ColumnDefinitions="*,Auto,Auto,Auto,Auto" ColumnSpacing="12">
+            <StackPanel Spacing="2" VerticalAlignment="Center">
+              <TextBlock Classes="caption" TextWrapping="Wrap" Text="{Binding SnapshotSummary}" IsVisible="{Binding HasSnapshot}" />
+              <TextBlock Classes="caption" TextWrapping="Wrap" Text="{Binding CompareSummary}" IsVisible="{Binding IsComparing}" />
+              <TextBlock Classes="caption" TextWrapping="Wrap" IsVisible="{Binding !HasSnapshot}"
+                         Text="A snapshot runs a full collection and pauses the process while the heap is walked: a moment for most, seconds for a heap of many gigabytes. Until the walk is sent, the process also holds it in memory: about a third of its heap." />
+            </StackPanel>
+            <TextBox Grid.Column="1" Width="240" VerticalContentAlignment="Center" IsVisible="{Binding HasSnapshot}"
+                     Text="{Binding HeapFilter}" PlaceholderText="Filter by type name"
+                     AutomationProperties.Name="Filter types">
+              <TextBox.InnerLeftContent>
+                <ctl:Icon Width="16" Height="16" Margin="10,0,0,0" Foreground="{StaticResource SlTextSecondary}"
+                          Data="{StaticResource IconSearch}" />
+              </TextBox.InnerLeftContent>
+              <TextBox.InnerRightContent>
+                <Button Theme="{StaticResource IconButton}" Margin="0,0,4,0" IsVisible="{Binding HasHeapFilter}"
+                        Command="{Binding ClearHeapFilterCommand}" AutomationProperties.Name="Clear filter">
+                  <ctl:Icon Width="14" Height="14" Data="{StaticResource IconClose}" />
+                </Button>
+              </TextBox.InnerRightContent>
+            </TextBox>
+<Button Grid.Column="2" Theme="{StaticResource SoftButton}" VerticalAlignment="Center"
+                    Command="{Binding CopyHeapCommand}" IsVisible="{Binding HasSnapshot}"
+                    ToolTip.Tip="Copy the table as shown, as tab-separated text for a spreadsheet or an issue">
+              <StackPanel Orientation="Horizontal" Spacing="6">
+                <ctl:Icon Width="14" Height="14" Data="{StaticResource IconCopy}" />
+                <TextBlock Text="Copy" VerticalAlignment="Center" />
               </StackPanel>
             </Button>
-            <TextBlock Grid.Column="1" Classes="column changes" Text="Objects" TextAlignment="Right" VerticalAlignment="Center" />
-            <Button Grid.Column="2" Classes="column changes" Theme="{StaticResource SortHeader}"
-                    Classes.active="{Binding IsSortedByCount}" Command="{Binding SortByCountCommand}"
-                    AutomationProperties.Name="Sort by change in objects">
-              <StackPanel Orientation="Horizontal" Spacing="4">
-                <TextBlock Text="Change" />
-                <ctl:Icon Width="12" Height="12" VerticalAlignment="Center" Data="{StaticResource IconChevronDown}"
-                          IsVisible="{Binding IsSortedByCount}" />
+            <ToggleButton Grid.Column="3" Theme="{StaticResource SoftToggle}" VerticalAlignment="Center"
+                          IsChecked="{Binding IsComparing}" IsVisible="{Binding CanCompare}"
+                          ToolTip.Tip="How each type changed since the snapshot before: what keeps growing is what leaks">
+              <TextBlock Text="Compare with previous" />
+            </ToggleButton>
+            <Button Grid.Column="4" Theme="{StaticResource SoftButton}" Command="{Binding SnapshotCommand}"
+                    IsEnabled="{Binding !IsSnapshotting}" VerticalAlignment="Center"
+                    ToolTip.Tip="Run a full garbage collection and list every live object by type">
+              <StackPanel Orientation="Horizontal" Spacing="6">
+                <ctl:Icon Width="14" Height="14" Data="{StaticResource IconMemory}" />
+                <TextBlock Text="Snapshot heap" VerticalAlignment="Center" />
               </StackPanel>
             </Button>
-
-            <Button Grid.Column="3" Classes="column values" Theme="{StaticResource SortHeader}"
-                    Classes.active="{Binding IsSortedByBytes}" Command="{Binding SortByBytesCommand}"
-                    AutomationProperties.Name="Sort by own size" ToolTip.Tip="The bytes of the objects themselves">
-              <StackPanel Orientation="Horizontal" Spacing="4">
-                <TextBlock Text="Own size" />
-                <ctl:Icon Width="12" Height="12" VerticalAlignment="Center" Data="{StaticResource IconChevronDown}"
-                          IsVisible="{Binding IsSortedByBytes}" />
-              </StackPanel>
-            </Button>
-            <TextBlock Grid.Column="3" Classes="column changes" Text="Own size" TextAlignment="Right" VerticalAlignment="Center" />
-            <Button Grid.Column="4" Classes="column changes" Theme="{StaticResource SortHeader}"
-                    Classes.active="{Binding IsSortedByBytes}" Command="{Binding SortByBytesCommand}"
-                    AutomationProperties.Name="Sort by change in own size">
-              <StackPanel Orientation="Horizontal" Spacing="4">
-                <TextBlock Text="Change" />
-                <ctl:Icon Width="12" Height="12" VerticalAlignment="Center" Data="{StaticResource IconChevronDown}"
-                          IsVisible="{Binding IsSortedByBytes}" />
-              </StackPanel>
-            </Button>
-
-            <Button Grid.Column="5" Classes="column values" Theme="{StaticResource SortHeader}"
-                    Classes.active="{Binding IsSortedByRetained}" Command="{Binding SortByRetainedCommand}"
-                    IsEnabled="{Binding HasRetained}" AutomationProperties.Name="Sort by retained size"
-                    ToolTip.Tip="What the objects keep alive: what a collection could free if they were gone">
-              <StackPanel Orientation="Horizontal" Spacing="4">
-                <TextBlock Text="Retained" />
-                <ctl:Icon Width="12" Height="12" VerticalAlignment="Center" Data="{StaticResource IconChevronDown}"
-                          IsVisible="{Binding IsSortedByRetained}" />
-              </StackPanel>
-            </Button>
-            <Button Grid.Column="6" Classes="column changes" Theme="{StaticResource SortHeader}"
-                    Classes.active="{Binding IsSortedByRetained}" Command="{Binding SortByRetainedCommand}"
-                    IsEnabled="{Binding HasRetained}" AutomationProperties.Name="Sort by change in retained size"
-                    ToolTip.Tip="How much more, or less, the objects keep alive than before">
-              <StackPanel Orientation="Horizontal" Spacing="4">
-                <TextBlock Text="Retained change" />
-                <ctl:Icon Width="12" Height="12" VerticalAlignment="Center" Data="{StaticResource IconChevronDown}"
-                          IsVisible="{Binding IsSortedByRetained}" />
-              </StackPanel>
-            </Button>
-
-            <TextBlock Grid.Column="7" Classes="column values" Width="64" Text="Share" TextAlignment="Right" VerticalAlignment="Center" />
           </Grid>
-        </Border>
 
-        <ItemsControl Grid.Row="3" ItemsSource="{Binding HeapTypes}" AutomationProperties.Name="Heap by type"
-                      IsVisible="{Binding HasSnapshot}">
-          <ItemsControl.Template>
-            <ControlTemplate>
-              <ScrollViewer HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
-                <ItemsPresenter Name="PART_ItemsPresenter" ItemsPanel="{TemplateBinding ItemsPanel}" />
-              </ScrollViewer>
-            </ControlTemplate>
-          </ItemsControl.Template>
-          <ItemsControl.ItemsPanel>
-            <ItemsPanelTemplate>
-              <VirtualizingStackPanel />
-            </ItemsPanelTemplate>
-          </ItemsControl.ItemsPanel>
-          <ItemsControl.ItemTemplate>
-            <DataTemplate x:DataType="dotnet:HeapType">
-              <Border Padding="24,8" BorderBrush="{StaticResource SlBorderFaint}" BorderThickness="0,0,0,1">
-                <Grid Classes="columns" ColumnDefinitions="*,Auto,Auto,Auto,Auto,Auto,Auto,Auto"
-                      Classes.comparing="{Binding $parent[ItemsControl].((dotnet:ManagedMemory)DataContext).IsComparing}">
-                  <SelectableTextBlock FontFamily="{StaticResource SlFontMono}" FontSize="{StaticResource SlTextSmall}" VerticalAlignment="Center"
-                                       Text="{Binding Name}" TextTrimming="CharacterEllipsis" ToolTip.Tip="{Binding FullName}"
-                                       SelectionBrush="{StaticResource SlAccentTint30}" />
-                  <TextBlock Grid.Column="1" Classes="cell column" Text="{Binding CountText}" />
-                  <TextBlock Grid.Column="2" Classes="cell column changes" Text="{Binding CountChangeText}" />
-                  <TextBlock Grid.Column="3" Classes="cell column" Text="{Binding BytesText}" />
-                  <TextBlock Grid.Column="4" Classes="cell column changes" Text="{Binding BytesChangeText}" />
-                  <TextBlock Grid.Column="5" Classes="cell column values" Text="{Binding RetainedText}" />
-                  <TextBlock Grid.Column="6" Classes="cell column changes" Text="{Binding RetainedChangeText}" />
-                  <TextBlock Grid.Column="7" Classes="cell column values" Width="64" Text="{Binding ShareText}" />
-                </Grid>
-              </Border>
-            </DataTemplate>
-          </ItemsControl.ItemTemplate>
-        </ItemsControl>
+          <StackPanel Grid.Row="1" Spacing="8" Margin="24,0,24,16">
+            <StackPanel.IsVisible>
+              <MultiBinding Converter="{x:Static BoolConverters.Or}">
+                <Binding Path="HasSnapshotStatus" />
+                <Binding Path="HasSnapshotWarning" />
+              </MultiBinding>
+            </StackPanel.IsVisible>
+            <Border Classes="callout warning" IsVisible="{Binding HasSnapshotWarning}">
+              <Grid ColumnDefinitions="Auto,*" ColumnSpacing="8">
+                <ctl:Icon Classes="status" Width="16" Height="16" VerticalAlignment="Top" Data="{StaticResource IconWarning}" />
+                <TextBlock Grid.Column="1" Text="{Binding SnapshotWarning}" TextWrapping="Wrap" FontSize="{StaticResource SlTextSmall}" />
+              </Grid>
+            </Border>
+            <Border Classes="callout" Classes.danger="{Binding SnapshotIsError}"
+                    IsVisible="{Binding HasSnapshotStatus}">
+              <Grid ColumnDefinitions="Auto,*" ColumnSpacing="8">
+                <ctl:Icon Classes="status" Width="16" Height="16" VerticalAlignment="Top"
+                          Data="{StaticResource IconWarning}" IsVisible="{Binding SnapshotIsError}" />
+                <TextBlock Grid.Column="1" Text="{Binding SnapshotStatus}" TextWrapping="Wrap" FontSize="{StaticResource SlTextSmall}" />
+              </Grid>
+            </Border>
+          </StackPanel>
 
-        <TextBlock Grid.Row="3" Classes="caption" Margin="24" HorizontalAlignment="Center" VerticalAlignment="Top"
-                   Text="No type matches the filter." IsVisible="{Binding HasNoMatches}" />
+          <!-- Sizes sort largest first; share is of the heap's own bytes. While comparing, the changes sort. -->
+          <Border Grid.Row="2" Classes="table-header" BorderThickness="0,1" IsVisible="{Binding HasSnapshot}">
+            <Grid Classes="columns" Classes.comparing="{Binding IsComparing}"
+                  ColumnDefinitions="*,Auto,Auto,Auto,Auto,Auto,Auto,Auto">
+              <TextBlock Text="{Binding HeapCountText}" VerticalAlignment="Center" />
+
+              <Button Grid.Column="1" Classes="column values" Theme="{StaticResource SortHeader}"
+                      Classes.active="{Binding IsSortedByCount}" Command="{Binding SortByCountCommand}"
+                      AutomationProperties.Name="Sort by objects">
+                <StackPanel Orientation="Horizontal" Spacing="4">
+                  <TextBlock Text="Objects" />
+                  <ctl:Icon Width="12" Height="12" VerticalAlignment="Center" Data="{StaticResource IconChevronDown}"
+                            IsVisible="{Binding IsSortedByCount}" />
+                </StackPanel>
+              </Button>
+              <TextBlock Grid.Column="1" Classes="column changes" Text="Objects" TextAlignment="Right" VerticalAlignment="Center" />
+              <Button Grid.Column="2" Classes="column changes" Theme="{StaticResource SortHeader}"
+                      Classes.active="{Binding IsSortedByCount}" Command="{Binding SortByCountCommand}"
+                      AutomationProperties.Name="Sort by change in objects">
+                <StackPanel Orientation="Horizontal" Spacing="4">
+                  <TextBlock Text="Change" />
+                  <ctl:Icon Width="12" Height="12" VerticalAlignment="Center" Data="{StaticResource IconChevronDown}"
+                            IsVisible="{Binding IsSortedByCount}" />
+                </StackPanel>
+              </Button>
+
+              <Button Grid.Column="3" Classes="column values" Theme="{StaticResource SortHeader}"
+                      Classes.active="{Binding IsSortedByBytes}" Command="{Binding SortByBytesCommand}"
+                      AutomationProperties.Name="Sort by own size" ToolTip.Tip="The bytes of the objects themselves">
+                <StackPanel Orientation="Horizontal" Spacing="4">
+                  <TextBlock Text="Own size" />
+                  <ctl:Icon Width="12" Height="12" VerticalAlignment="Center" Data="{StaticResource IconChevronDown}"
+                            IsVisible="{Binding IsSortedByBytes}" />
+                </StackPanel>
+              </Button>
+              <TextBlock Grid.Column="3" Classes="column changes" Text="Own size" TextAlignment="Right" VerticalAlignment="Center" />
+              <Button Grid.Column="4" Classes="column changes" Theme="{StaticResource SortHeader}"
+                      Classes.active="{Binding IsSortedByBytes}" Command="{Binding SortByBytesCommand}"
+                      AutomationProperties.Name="Sort by change in own size">
+                <StackPanel Orientation="Horizontal" Spacing="4">
+                  <TextBlock Text="Change" />
+                  <ctl:Icon Width="12" Height="12" VerticalAlignment="Center" Data="{StaticResource IconChevronDown}"
+                            IsVisible="{Binding IsSortedByBytes}" />
+                </StackPanel>
+              </Button>
+
+              <Button Grid.Column="5" Classes="column values" Theme="{StaticResource SortHeader}"
+                      Classes.active="{Binding IsSortedByRetained}" Command="{Binding SortByRetainedCommand}"
+                      IsEnabled="{Binding HasRetained}" AutomationProperties.Name="Sort by retained size"
+                      ToolTip.Tip="What the objects keep alive: what a collection could free if they were gone">
+                <StackPanel Orientation="Horizontal" Spacing="4">
+                  <TextBlock Text="Retained" />
+                  <ctl:Icon Width="12" Height="12" VerticalAlignment="Center" Data="{StaticResource IconChevronDown}"
+                            IsVisible="{Binding IsSortedByRetained}" />
+                </StackPanel>
+              </Button>
+              <Button Grid.Column="6" Classes="column changes" Theme="{StaticResource SortHeader}"
+                      Classes.active="{Binding IsSortedByRetained}" Command="{Binding SortByRetainedCommand}"
+                      IsEnabled="{Binding HasRetained}" AutomationProperties.Name="Sort by change in retained size"
+                      ToolTip.Tip="How much more, or less, the objects keep alive than before">
+                <StackPanel Orientation="Horizontal" Spacing="4">
+                  <TextBlock Text="Retained change" />
+                  <ctl:Icon Width="12" Height="12" VerticalAlignment="Center" Data="{StaticResource IconChevronDown}"
+                            IsVisible="{Binding IsSortedByRetained}" />
+                </StackPanel>
+              </Button>
+
+              <TextBlock Grid.Column="7" Classes="column values" Width="64" Text="Share" TextAlignment="Right" VerticalAlignment="Center" />
+            </Grid>
+          </Border>
+
+          <ItemsControl Grid.Row="3" ItemsSource="{Binding HeapTypes}" AutomationProperties.Name="Heap by type"
+                        IsVisible="{Binding HasSnapshot}">
+            <ItemsControl.Template>
+              <ControlTemplate>
+                <ScrollViewer HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
+                  <ItemsPresenter Name="PART_ItemsPresenter" ItemsPanel="{TemplateBinding ItemsPanel}" />
+                </ScrollViewer>
+              </ControlTemplate>
+            </ItemsControl.Template>
+            <ItemsControl.ItemsPanel>
+              <ItemsPanelTemplate>
+                <VirtualizingStackPanel />
+              </ItemsPanelTemplate>
+            </ItemsControl.ItemsPanel>
+            <ItemsControl.ItemTemplate>
+              <DataTemplate x:DataType="dotnet:HeapType">
+                <Border Padding="24,8" BorderBrush="{StaticResource SlBorderFaint}" BorderThickness="0,0,0,1">
+                  <Grid Classes="columns" ColumnDefinitions="*,Auto,Auto,Auto,Auto,Auto,Auto,Auto"
+                        Classes.comparing="{Binding $parent[ItemsControl].((dotnet:ManagedMemory)DataContext).IsComparing}">
+                    <SelectableTextBlock FontFamily="{StaticResource SlFontMono}" FontSize="{StaticResource SlTextSmall}" VerticalAlignment="Center"
+                                         Text="{Binding Name}" TextTrimming="CharacterEllipsis" ToolTip.Tip="{Binding FullName}"
+                                         SelectionBrush="{StaticResource SlAccentTint30}" />
+                    <TextBlock Grid.Column="1" Classes="cell column" Text="{Binding CountText}" />
+                    <TextBlock Grid.Column="2" Classes="cell column changes" Text="{Binding CountChangeText}" />
+                    <TextBlock Grid.Column="3" Classes="cell column" Text="{Binding BytesText}" />
+                    <TextBlock Grid.Column="4" Classes="cell column changes" Text="{Binding BytesChangeText}" />
+                    <TextBlock Grid.Column="5" Classes="cell column values" Text="{Binding RetainedText}" />
+                    <TextBlock Grid.Column="6" Classes="cell column changes" Text="{Binding RetainedChangeText}" />
+                    <TextBlock Grid.Column="7" Classes="cell column values" Width="64" Text="{Binding ShareText}" />
+                  </Grid>
+                </Border>
+              </DataTemplate>
+            </ItemsControl.ItemTemplate>
+          </ItemsControl>
+
+          <TextBlock Grid.Row="3" Classes="caption" Margin="24" HorizontalAlignment="Center" VerticalAlignment="Top"
+                     Text="No type matches the filter." IsVisible="{Binding HasNoMatches}" />
+        </Grid>
+
+        <!-- Exceptions, newest first; repeats of a type and message are one row. -->
+        <Grid Grid.Row="1" RowDefinitions="Auto,Auto,Auto,*" IsVisible="{Binding IsShowingExceptions}">
+          <Grid Margin="24,12,24,16" ColumnDefinitions="*,Auto,Auto" ColumnSpacing="12">
+            <StackPanel Spacing="2" VerticalAlignment="Center">
+              <TextBlock Classes="caption" TextWrapping="Wrap" Text="{Binding Exceptions.Summary}" />
+              <TextBlock Classes="caption" TextWrapping="Wrap"
+                         Text="Every throw, caught or not, while this page is open. Hover a message to read all of it." />
+            </StackPanel>
+<Button Grid.Column="1" Theme="{StaticResource SoftButton}" VerticalAlignment="Center"
+                    Command="{Binding CopyExceptionsCommand}" IsEnabled="{Binding Exceptions.HasKinds}"
+                    ToolTip.Tip="Copy the table as shown, as tab-separated text for a spreadsheet or an issue">
+              <StackPanel Orientation="Horizontal" Spacing="6">
+                <ctl:Icon Width="14" Height="14" Data="{StaticResource IconCopy}" />
+                <TextBlock Text="Copy" VerticalAlignment="Center" />
+              </StackPanel>
+            </Button>
+            <Button Grid.Column="2" Theme="{StaticResource SoftButton}" VerticalAlignment="Center"
+                    Command="{Binding Exceptions.ClearCommand}" IsEnabled="{Binding Exceptions.HasKinds}">
+              <StackPanel Orientation="Horizontal" Spacing="6">
+                <ctl:Icon Width="14" Height="14" Data="{StaticResource IconTrash}" />
+                <TextBlock Text="Clear list" VerticalAlignment="Center" />
+              </StackPanel>
+            </Button>
+          </Grid>
+
+          <Border Grid.Row="1" Classes="callout" Classes.danger="{Binding Exceptions.StatusIsError}" Margin="24,0,24,16"
+                  IsVisible="{Binding Exceptions.HasStatus}">
+            <Grid ColumnDefinitions="Auto,*" ColumnSpacing="8">
+              <ctl:Icon Classes="status" Width="16" Height="16" VerticalAlignment="Top"
+                        Data="{StaticResource IconWarning}" IsVisible="{Binding Exceptions.StatusIsError}" />
+              <TextBlock Grid.Column="1" Text="{Binding Exceptions.Status}" TextWrapping="Wrap" FontSize="{StaticResource SlTextSmall}" />
+            </Grid>
+          </Border>
+
+          <Border Grid.Row="2" Classes="table-header" BorderThickness="0,1">
+            <Grid ColumnDefinitions="2*,3*,80,90" ColumnSpacing="16">
+              <TextBlock Text="Type" />
+              <TextBlock Grid.Column="1" Text="Message" />
+              <TextBlock Grid.Column="2" Text="Count" HorizontalAlignment="Right" />
+              <TextBlock Grid.Column="3" Text="Last thrown" HorizontalAlignment="Right" />
+            </Grid>
+          </Border>
+
+          <ItemsControl Grid.Row="3" ItemsSource="{Binding Exceptions.Kinds}" AutomationProperties.Name="Exceptions">
+            <ItemsControl.Template>
+              <ControlTemplate>
+                <ScrollViewer HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
+                  <ItemsPresenter Name="PART_ItemsPresenter" ItemsPanel="{TemplateBinding ItemsPanel}" />
+                </ScrollViewer>
+              </ControlTemplate>
+            </ItemsControl.Template>
+            <ItemsControl.ItemsPanel>
+              <ItemsPanelTemplate>
+                <VirtualizingStackPanel />
+              </ItemsPanelTemplate>
+            </ItemsControl.ItemsPanel>
+            <ItemsControl.ItemTemplate>
+              <DataTemplate x:DataType="dotnet:ThrownException">
+                <Border Padding="24,8" BorderBrush="{StaticResource SlBorderFaint}" BorderThickness="0,0,0,1">
+                  <Grid ColumnDefinitions="2*,3*,80,90" ColumnSpacing="16">
+                    <TextBlock FontFamily="{StaticResource SlFontMono}" FontSize="{StaticResource SlTextSmall}" VerticalAlignment="Center"
+                               Text="{Binding Name}" TextTrimming="CharacterEllipsis" ToolTip.Tip="{Binding FullName}" />
+                    <TextBlock Grid.Column="1" FontSize="{StaticResource SlTextSmall}" VerticalAlignment="Center"
+                               Text="{Binding Message}" TextTrimming="CharacterEllipsis">
+                      <ToolTip.Tip>
+                        <TextBlock Text="{Binding FullMessage}" TextWrapping="Wrap" MaxWidth="600" />
+                      </ToolTip.Tip>
+                    </TextBlock>
+                    <TextBlock Grid.Column="2" Classes="cell" Text="{Binding CountText}" />
+                    <TextBlock Grid.Column="3" Classes="cell" Text="{Binding LastThrownText}" />
+                  </Grid>
+                </Border>
+              </DataTemplate>
+            </ItemsControl.ItemTemplate>
+          </ItemsControl>
+
+          <TextBlock Grid.Row="3" Classes="caption" Margin="24" HorizontalAlignment="Center" VerticalAlignment="Top"
+                     Text="Nothing thrown yet." IsVisible="{Binding !Exceptions.HasKinds}" />
+        </Grid>
+
+        <!-- Allocations by type, sampled about every 100 KB; most allocated first. -->
+        <Grid Grid.Row="1" RowDefinitions="Auto,Auto,Auto,*" IsVisible="{Binding IsShowingAllocations}">
+          <Grid Margin="24,12,24,16" ColumnDefinitions="*,Auto,Auto" ColumnSpacing="12">
+            <StackPanel Spacing="2" VerticalAlignment="Center">
+              <TextBlock Classes="caption" TextWrapping="Wrap" Text="{Binding Allocations.Summary}" />
+              <TextBlock Classes="caption" TextWrapping="Wrap"
+                         Text="Sampled: about every 100 KB allocated counts against the type that crossed the mark, so totals are close over a few seconds of steady work, and types that allocate little may not show." />
+            </StackPanel>
+            <Button Grid.Column="1" Theme="{StaticResource SoftButton}" VerticalAlignment="Center"
+                    Command="{Binding CopyAllocationsCommand}" IsEnabled="{Binding Allocations.HasTypes}"
+                    ToolTip.Tip="Copy the table as shown, as tab-separated text for a spreadsheet or an issue">
+              <StackPanel Orientation="Horizontal" Spacing="6">
+                <ctl:Icon Width="14" Height="14" Data="{StaticResource IconCopy}" />
+                <TextBlock Text="Copy" VerticalAlignment="Center" />
+              </StackPanel>
+            </Button>
+            <Button Grid.Column="2" Theme="{StaticResource SoftButton}" VerticalAlignment="Center"
+                    Command="{Binding Allocations.ClearCommand}" IsEnabled="{Binding Allocations.HasTypes}"
+                    ToolTip.Tip="Start counting again from now">
+              <StackPanel Orientation="Horizontal" Spacing="6">
+                <ctl:Icon Width="14" Height="14" Data="{StaticResource IconTrash}" />
+                <TextBlock Text="Clear list" VerticalAlignment="Center" />
+              </StackPanel>
+            </Button>
+          </Grid>
+
+          <Border Grid.Row="1" Classes="callout" Classes.danger="{Binding Allocations.StatusIsError}" Margin="24,0,24,16"
+                  IsVisible="{Binding Allocations.HasStatus}">
+            <Grid ColumnDefinitions="Auto,*" ColumnSpacing="8">
+              <ctl:Icon Classes="status" Width="16" Height="16" VerticalAlignment="Top"
+                        Data="{StaticResource IconWarning}" IsVisible="{Binding Allocations.StatusIsError}" />
+              <TextBlock Grid.Column="1" Text="{Binding Allocations.Status}" TextWrapping="Wrap" FontSize="{StaticResource SlTextSmall}" />
+            </Grid>
+          </Border>
+
+          <Border Grid.Row="2" Classes="table-header" BorderThickness="0,1">
+            <Grid ColumnDefinitions="*,110,64" ColumnSpacing="16">
+              <TextBlock Text="Type" />
+              <TextBlock Grid.Column="1" Text="Allocated" HorizontalAlignment="Right" />
+              <TextBlock Grid.Column="2" Text="Share" HorizontalAlignment="Right" />
+            </Grid>
+          </Border>
+
+          <ItemsControl Grid.Row="3" ItemsSource="{Binding Allocations.Types}" AutomationProperties.Name="Allocations">
+            <ItemsControl.Template>
+              <ControlTemplate>
+                <ScrollViewer HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
+                  <ItemsPresenter Name="PART_ItemsPresenter" ItemsPanel="{TemplateBinding ItemsPanel}" />
+                </ScrollViewer>
+              </ControlTemplate>
+            </ItemsControl.Template>
+            <ItemsControl.ItemsPanel>
+              <ItemsPanelTemplate>
+                <VirtualizingStackPanel />
+              </ItemsPanelTemplate>
+            </ItemsControl.ItemsPanel>
+            <ItemsControl.ItemTemplate>
+              <DataTemplate x:DataType="dotnet:AllocatedType">
+                <Border Padding="24,8" BorderBrush="{StaticResource SlBorderFaint}" BorderThickness="0,0,0,1">
+                  <Grid ColumnDefinitions="*,110,64" ColumnSpacing="16">
+                    <TextBlock FontFamily="{StaticResource SlFontMono}" FontSize="{StaticResource SlTextSmall}" VerticalAlignment="Center"
+                               Text="{Binding Name}" TextTrimming="CharacterEllipsis" ToolTip.Tip="{Binding FullName}" />
+                    <TextBlock Grid.Column="1" Classes="cell" Text="{Binding BytesText}" />
+                    <TextBlock Grid.Column="2" Classes="cell" Text="{Binding ShareText}" />
+                  </Grid>
+                </Border>
+              </DataTemplate>
+            </ItemsControl.ItemTemplate>
+          </ItemsControl>
+
+          <TextBlock Grid.Row="3" Classes="caption" Margin="24" HorizontalAlignment="Center" VerticalAlignment="Top"
+                     Text="Nothing sampled yet." IsVisible="{Binding !Allocations.HasTypes}" />
+        </Grid>
+
+        <!-- The runtime's other counters: work, code and, for an ASP.NET Core app, requests. -->
+        <ScrollViewer Grid.Row="1" IsVisible="{Binding IsShowingRuntime}" HorizontalScrollBarVisibility="Disabled">
+          <Grid Margin="24,16,24,20" ColumnDefinitions="*,*,*" ColumnSpacing="32">
+            <StackPanel Spacing="6">
+              <ctl:CapsText Classes="label" Value="Work" />
+              <ItemsControl ItemsSource="{Binding Work}" ItemTemplate="{StaticResource CounterTemplate}" />
+            </StackPanel>
+            <StackPanel Grid.Column="1" Spacing="6">
+              <ctl:CapsText Classes="label" Value="Code" />
+              <ItemsControl ItemsSource="{Binding Code}" ItemTemplate="{StaticResource CounterTemplate}" />
+              <TextBlock Classes="caption" TextWrapping="Wrap" Text="Time in JIT counts from when the process was selected." />
+            </StackPanel>
+            <StackPanel Grid.Column="2" Spacing="6">
+              <ctl:CapsText Classes="label" Value="Web requests" />
+              <ItemsControl ItemsSource="{Binding Requests}" ItemTemplate="{StaticResource CounterTemplate}"
+                            IsVisible="{Binding HasWebCounters}" />
+              <TextBlock Classes="caption" TextWrapping="Wrap" IsVisible="{Binding !HasWebCounters}"
+                         Text="Not an ASP.NET Core app, or it hasn't reported any requests." />
+            </StackPanel>
+          </Grid>
+        </ScrollViewer>
       </Grid>
     </Border>
   </Grid>
