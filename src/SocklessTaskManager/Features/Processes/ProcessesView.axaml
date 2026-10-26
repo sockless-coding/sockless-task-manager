@@ -182,6 +182,14 @@
                     <TextBlock Text="Open file location" VerticalAlignment="Center" />
                   </StackPanel>
                 </Button>
+                <Button Theme="{StaticResource SoftButton}" Command="{Binding DumpCommand}" IsVisible="{Binding IsAlive}"
+                        IsEnabled="{Binding !IsDumping}"
+                        ToolTip.Tip="Write all of its memory to a .dmp file, for Visual Studio, WinDbg or dotnet-dump. It's paused while the file is written.">
+                  <StackPanel Orientation="Horizontal" Spacing="6">
+                    <ctl:Icon Width="14" Height="14" Data="{StaticResource IconDisk}" />
+                    <TextBlock Text="Create dump file" VerticalAlignment="Center" />
+                  </StackPanel>
+                </Button>
               </WrapPanel>
 
               <!-- What the last action did, or why it didn't. -->
@@ -191,6 +199,13 @@
                             Data="{StaticResource IconWarning}" IsVisible="{Binding NoticeIsError}" />
                   <StackPanel Grid.Column="1" Spacing="6">
                     <TextBlock Text="{Binding Notice}" TextWrapping="Wrap" FontSize="{StaticResource SlTextSmall}" />
+                    <Button Theme="{StaticResource LinkButton}" Command="{Binding NoticeActionCommand}"
+                            IsVisible="{Binding HasNoticeAction}" HorizontalAlignment="Left">
+                      <StackPanel Orientation="Horizontal" Spacing="4">
+                        <ctl:Icon Width="14" Height="14" Data="{StaticResource IconFolderOpen}" />
+                        <TextBlock Text="{Binding NoticeActionText}" FontSize="{StaticResource SlTextSmall}" VerticalAlignment="Center" />
+                      </StackPanel>
+                    </Button>
                     <Button Theme="{StaticResource LinkButton}" Command="{Binding RestartElevatedCommand}"
                             IsVisible="{Binding OfferElevation}" HorizontalAlignment="Left">
                       <StackPanel Orientation="Horizontal" Spacing="4">
@@ -512,6 +527,7 @@
                             <Separator />
                             <MenuItem Header="{Binding FollowText}" Command="{Binding FollowCommand}" />
                             <MenuItem Header="Open file location" Command="{Binding OpenLocationCommand}" IsEnabled="{Binding HasPath}" />
+                            <MenuItem Header="Create dump file…" Command="{Binding DumpCommand}" />
                           </ContextMenu>
                         </Button.ContextMenu>
                         <Grid ColumnDefinitions="*,Auto,24" ColumnSpacing="16">

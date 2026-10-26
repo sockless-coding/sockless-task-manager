@@ -3,9 +3,9 @@ using System.Runtime.InteropServices;
 namespace Sockless.TaskManager.Features.Processes;
 
 /// <summary>
-/// What the user can do to a running process: end it, suspend or resume it, and change its
-/// priority and processor affinity. Every call opens the process by key, so it acts on that
-/// process or on nothing.
+/// What the user can do to a running process: end it, suspend or resume it, change its priority
+/// and processor affinity, and write a dump of it. Every call opens the process by key, so it
+/// acts on that process or on nothing.
 /// </summary>
 internal static class ProcessControl
 {
@@ -19,6 +19,19 @@ internal static class ProcessControl
 
     /// <summary>Task Manager's exit code for "End task".</summary>
     private const uint EndTaskExitCode = 1;
+
+    /// <summary>
+    /// A full dump, as Task Manager and dotnet-dump write them: all memory, plus handles, threads,
+    /// unloaded modules and the memory map, so Visual Studio, WinDbg and dotnet-dump can open it.
+    /// </summary>
+    private const uint FullDump =
+        0x00001     // MiniDumpWithDataSegs
+        | 0x00002   // MiniDumpWithFullMemory
+        | 0x00004   // MiniDumpWithHandleData
+        | 0x00020   // MiniDumpWithUnloadedModules
+        | 0x00800   // MiniDumpWithFullMemoryInfo
+        | 0x01000   // MiniDumpWithThreadInfo
+        | 0x40000;  // MiniDumpWithTokenInformation
 
     public static Outcome End(ProcessKey key)
     {
@@ -101,6 +114,50 @@ internal static class ProcessControl
 
         using (handle)
             return ProcessNative.SetProcessAffinityMask(handle.Value, (nuint)mask) ? Outcome.Done : Error();
+    }
+
+    /// <summary>
+    /// Writes a full dump to <paramref name="path"/>. Windows pauses the process while it does,
+    /// which takes as long as copying its memory. A failed dump leaves no file.
+    /// </summary>
+    public static Outcome WriteDump(ProcessKey key, string path)
+    {
+        var opened = ProcessHandle.Open(key,
+            ProcessNative.QueryInformation | ProcessNative.VmRead | ProcessNative.DuplicateHandle, out var handle);
+        if (opened != Outcome.Done)
+            return opened;
+
+        using (handle)
+        {
+            bool written;
+            int error;
+            try
+            {
+                using var file = File.OpenHandle(path, FileMode.Create, FileAccess.ReadWrite);
+                written = ProcessNative.MiniDumpWriteDump(handle.Value, (uint)key.Id, file, FullDump, 0, 0, 0);
+                error = Marshal.GetLastPInvokeError();
+            }
+            catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+            {
+                return Outcome.Failed;
+            }
+
+            if (written)
+                return Outcome.Done;
+
+            try
+            {
+                File.Delete(path);
+            }
+            catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+            {
+            }
+
+            // The error is an HRESULT wrapping a Win32 code.
+            if (HasExited(handle.Value))
+                return Outcome.Gone;
+            return (error & 0xFFFF) == ProcessNative.ErrorAccessDenied ? Outcome.Denied : Outcome.Failed;
+        }
     }
 
     private static bool HasExited(nint process) =>

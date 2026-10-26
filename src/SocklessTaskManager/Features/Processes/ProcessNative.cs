@@ -1,4 +1,5 @@
 using System.Runtime.InteropServices;
+using Microsoft.Win32.SafeHandles;
 
 namespace Sockless.TaskManager.Features.Processes;
 
@@ -6,6 +7,8 @@ namespace Sockless.TaskManager.Features.Processes;
 internal static unsafe partial class ProcessNative
 {
     public const uint Terminate = 0x0001;
+    public const uint VmRead = 0x0010;
+    public const uint DuplicateHandle = 0x0040;
     public const uint SetInformation = 0x0200;
     public const uint QueryInformation = 0x0400;
     public const uint SuspendResume = 0x0800;
@@ -52,6 +55,12 @@ internal static unsafe partial class ProcessNative
 
     [LibraryImport("kernel32.dll", EntryPoint = "QueryDosDeviceW")]
     public static partial uint QueryDosDevice(char* device, char* target, uint max);
+
+    /// <summary>Sets the last error to an HRESULT on failure.</summary>
+    [LibraryImport("dbghelp.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static partial bool MiniDumpWriteDump(nint process, uint processId, SafeFileHandle file, uint dumpType,
+        nint exception, nint userStream, nint callback);
 
     [LibraryImport("ntdll.dll")]
     public static partial uint NtSuspendProcess(nint process);

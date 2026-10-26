@@ -4,6 +4,7 @@ using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Input.Platform;
 using Avalonia.Interactivity;
+using Avalonia.Platform.Storage;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
 
@@ -73,6 +74,7 @@ public sealed partial class ProcessesView : UserControl
             _list.IsShown = false;
             _list.PropertyChanged -= OnListChanged;
             _list.CopyText = null;
+            _list.PickDumpPath = null;
         }
 
         if (_list is null || !ReferenceEquals(_list, current))
@@ -82,6 +84,7 @@ public sealed partial class ProcessesView : UserControl
             {
                 _list.PropertyChanged += OnListChanged;
                 _list.CopyText = Copy;
+                _list.PickDumpPath = PickDumpPathAsync;
             }
         }
 
@@ -124,6 +127,22 @@ public sealed partial class ProcessesView : UserControl
     {
         if (TopLevel.GetTopLevel(this)?.Clipboard is { } clipboard)
             _ = clipboard.SetTextAsync(text);
+    }
+
+    private async Task<string?> PickDumpPathAsync(string suggestedName)
+    {
+        if (TopLevel.GetTopLevel(this)?.StorageProvider is not { CanSave: true } storage)
+            return null;
+
+        var file = await storage.SaveFilePickerAsync(new FilePickerSaveOptions
+        {
+            Title = "Save dump file",
+            SuggestedFileName = suggestedName,
+            DefaultExtension = "dmp",
+            FileTypeChoices = [new FilePickerFileType("Dump file") { Patterns = ["*.dmp"] }],
+            ShowOverwritePrompt = true,
+        });
+        return file?.TryGetLocalPath();
     }
 
     private void OnWindowKeyDown(object? sender, KeyEventArgs e)

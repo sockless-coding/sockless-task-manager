@@ -29,7 +29,7 @@ src/SocklessTaskManager/
   Shell/                main window: sidebar, top bar, page host
   Features/
     Processes/          a top-level feature: process list and tree, search, filters, followed processes,
-                        details and actions (end, suspend, priority, affinity), ended processes (ETW when elevated),
+                        details and actions (end, suspend, priority, affinity, dump file), ended processes (ETW when elevated),
                         a column chooser and column filters (TableColumn.cs, ColumnFilter.cs)
       Dotnet/           .NET processes: GC counters and a heap-by-type snapshot with retained sizes, over the
                         diagnostics IPC pipe and a hand-written nettrace reader that keeps Native AOT green

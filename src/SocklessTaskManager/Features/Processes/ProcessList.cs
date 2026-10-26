@@ -381,6 +381,9 @@ public sealed class ProcessList : ObservableObject, IDisposable
     /// <summary>Set by the view: puts text on the clipboard.</summary>
     internal Action<string>? CopyText { get; set; }
 
+    /// <summary>Set by the view: asks where to save a dump, suggesting a file name. Null if cancelled.</summary>
+    internal Func<string, Task<string?>>? PickDumpPath { get; set; }
+
     private bool IsFiltering => _searchText.Length > 0 || _followedOnly || _thisSessionOnly || _filtered.Length > 0;
 
     private bool IsFilteringEnded => _searchText.Length > 0 || _shortLivedOnly || _thisSessionOnly;
@@ -720,6 +723,45 @@ public sealed class ProcessList : ObservableObject, IDisposable
         // Show the new state now rather than on the next tick.
         if (outcome == Outcome.Done)
             SampleNow();
+    }
+
+    /// <summary>
+    /// Asks where to save, then writes a full dump off the UI thread. Windows pauses the process
+    /// until its memory is copied, so the notice says how much there is.
+    /// </summary>
+    internal async void CreateDump(ProcessKey key)
+    {
+        if (_latest?.ByKey.GetValueOrDefault(key) is not { } reading || PickDumpPath is not { } pick)
+            return;
+
+        Select(key);
+        if (_details is not { IsDumping: false } details || details.Key != key)
+            return;
+        if (key.Id == Environment.ProcessId)
+        {
+            details.ShowNotice("This app can't dump itself: it would be paused while it wrote the file.", isError: true);
+            return;
+        }
+
+        var stamp = DateTime.Now.ToString("yyyyMMdd-HHmmss", CultureInfo.InvariantCulture);
+        var path = await pick($"{System.IO.Path.GetFileNameWithoutExtension(reading.Name)}_{key.Id}_{stamp}.dmp");
+        if (path is null)
+            return;
+
+        details.IsDumping = true;
+        details.ShowNotice($"Writing a dump of {reading.Name}. It's paused until its memory is copied, about {Format.Bytes(reading.Commit)}.", isError: false);
+        var outcome = await Task.Run(() => ProcessControl.WriteDump(key, path));
+        details.IsDumping = false;
+
+        if (outcome != Outcome.Done)
+        {
+            Report(details, outcome, "dumping", reading.Name, string.Empty);
+            return;
+        }
+
+        var size = new FileInfo(path) is { Exists: true } file ? $" ({Format.Bytes(file.Length)})" : string.Empty;
+        details.ShowNotice($"Wrote {System.IO.Path.GetFileName(path)}{size}. Open it in Visual Studio, WinDbg or dotnet-dump.",
+            isError: false, action: ("Show in folder", new RelayCommand(() => OpenLocation(path))));
     }
 
     internal void SetPriority(ProcessDetails details, uint priorityClass)

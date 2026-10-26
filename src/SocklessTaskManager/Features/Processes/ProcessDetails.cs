@@ -144,6 +144,8 @@ public sealed class ProcessDetails : ObservableObject
     private string? _notice;
     private bool _noticeIsError;
     private bool _offerElevation;
+    private (string Text, ICommand Command)? _noticeAction;
+    private bool _isDumping;
 
     /// <summary>A running process, from the latest sample.</summary>
     internal ProcessDetails(ProcessReading reading, string? parent, ProcessList owner)
@@ -188,6 +190,7 @@ public sealed class ProcessDetails : ObservableObject
         SuspendCommand = new RelayCommand(() => owner.SuspendOrResume(Key));
         FollowCommand = new RelayCommand(() => owner.Follow(Key));
         OpenLocationCommand = new RelayCommand(() => owner.OpenLocation(Path));
+        DumpCommand = new RelayCommand(() => owner.CreateDump(Key));
         AllProcessorsCommand = new RelayCommand(SelectAllProcessors);
         DismissNoticeCommand = new RelayCommand(ClearNotice);
     }
@@ -351,6 +354,22 @@ public sealed class ProcessDetails : ObservableObject
         private set => Set(ref _offerElevation, value);
     }
 
+    /// <summary>A link under the notice: "Show in folder" for a dump just written.</summary>
+    public string? NoticeActionText => _noticeAction?.Text;
+
+    public ICommand? NoticeActionCommand => _noticeAction?.Command;
+
+    public bool HasNoticeAction => _noticeAction is not null;
+
+    /// <summary>A dump is being written; another would only queue behind it.</summary>
+    public bool IsDumping
+    {
+        get => _isDumping;
+        internal set => Set(ref _isDumping, value);
+    }
+
+    public ICommand DumpCommand { get; }
+
     public ICommand CloseCommand { get; }
 
     public ICommand CopyPathCommand { get; }
@@ -476,17 +495,27 @@ public sealed class ProcessDetails : ObservableObject
             : $"{Format.Number(count)} of {Format.Number(Processors.Count)} processors";
     }
 
-    internal void ShowNotice(string text, bool isError, bool offerElevation = false)
+    internal void ShowNotice(string text, bool isError, bool offerElevation = false, (string Text, ICommand Command)? action = null)
     {
         Notice = text;
         NoticeIsError = isError;
         OfferElevation = offerElevation && !Elevation.IsElevated;
+        SetNoticeAction(action);
     }
 
     internal void ClearNotice()
     {
         Notice = null;
         OfferElevation = false;
+        SetNoticeAction(null);
+    }
+
+    private void SetNoticeAction((string Text, ICommand Command)? action)
+    {
+        _noticeAction = action;
+        OnPropertyChanged(nameof(NoticeActionText));
+        OnPropertyChanged(nameof(NoticeActionCommand));
+        OnPropertyChanged(nameof(HasNoticeAction));
     }
 
     internal void SetParent(string? parent, ProcessKey? parentKey)
