@@ -42,7 +42,7 @@ Data comes from Windows APIs: performance counters via PDH, `GlobalMemoryStatusE
 
 Measured on a Ryzen 7 9800X3D, Windows 11, release AOT build:
 
-- Publish folder: about 28 MB (15 MB executable plus Skia and HarfBuzz).
+- Publish folder: about 32 MB (20 MB executable plus Skia and HarfBuzz).
 - About 0.3% CPU and 50 MB private memory while sampling.
 
 The UI uses Avalonia's software renderer. Its GPU renderer loads ANGLE and the graphics driver, which cost about 170 MB more memory for no visible gain at one update a second.
@@ -62,6 +62,8 @@ dotnet publish src/SocklessTaskManager -c Release -r win-x64 -o artifacts/publis
 ## Releases
 
 Compiled builds are on the [Releases](https://github.com/sockless-coding/sockless-task-manager/releases) page: unzip and run `SocklessTaskManager.exe`.
+
+A release build checks for a newer release shortly after it starts and twice a day after that. When it finds one, an update button appears in the top bar: it downloads the zip, checks its SHA-256, replaces the files and restarts. If the app's folder can't be written to (Program Files without administrator rights), the button opens the release page instead. Builds made locally are version 0.0.0 and never check.
 
 To make a release, push a year.month.rev tag (no `v` prefix), where rev counts releases within the month. The release workflow publishes with Native AOT, zips the output and attaches it to a GitHub release with generated notes. A tag with a hyphen is marked as a prerelease.
 

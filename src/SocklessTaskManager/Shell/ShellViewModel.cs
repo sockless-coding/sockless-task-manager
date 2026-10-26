@@ -2,6 +2,7 @@ using System.ComponentModel;
 using System.Windows.Input;
 using Avalonia.Media;
 using Sockless.TaskManager.Core;
+using Sockless.TaskManager.Features.Updates;
 
 namespace Sockless.TaskManager.Shell;
 
@@ -12,16 +13,19 @@ public sealed class ShellViewModel : ObservableObject, IDisposable
     private Feature _selectedFeature;
     private bool _isSidebarOpen = true;
 
-    public ShellViewModel(SampleClock clock, IReadOnlyList<Feature> features)
+    public ShellViewModel(SampleClock clock, IReadOnlyList<Feature> features, Updater updates)
     {
         _clock = clock;
         Features = features;
+        Updates = updates;
         _selectedFeature = features[0];
         TogglePauseCommand = new RelayCommand(() => _clock.IsPaused = !_clock.IsPaused);
         _clock.PropertyChanged += OnClockChanged;
     }
 
     public IReadOnlyList<Feature> Features { get; }
+
+    public Updater Updates { get; }
 
     public Feature SelectedFeature
     {
@@ -74,6 +78,7 @@ public sealed class ShellViewModel : ObservableObject, IDisposable
     public void Dispose()
     {
         _clock.Dispose();
+        Updates.Dispose();
         foreach (var feature in Features)
             feature.Dispose();
     }

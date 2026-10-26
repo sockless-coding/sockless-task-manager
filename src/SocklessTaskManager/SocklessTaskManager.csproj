@@ -6,6 +6,8 @@
     <RootNamespace>Sockless.TaskManager</RootNamespace>
     <AssemblyName>SocklessTaskManager</AssemblyName>
     <Product>Sockless Task Manager</Product>
+    <!-- Releases build with their year.month.rev tag (release.yml); 0.0.0 marks a local build, which never updates. -->
+    <Version>0.0.0</Version>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <ApplicationIcon>Assets\app.ico</ApplicationIcon>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>

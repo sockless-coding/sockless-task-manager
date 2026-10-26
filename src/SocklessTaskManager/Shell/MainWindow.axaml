@@ -29,7 +29,8 @@
         <Border DockPanel.Dock="Top" Height="64" Padding="14,0"
                 BorderBrush="{StaticResource SlBorderFaint}" BorderThickness="0,0,0,1"
                 chrome:WindowDecorationProperties.ElementRole="TitleBar">
-          <StackPanel Orientation="Horizontal" Spacing="12" VerticalAlignment="Center">
+          <StackPanel Orientation="Horizontal" Spacing="12" VerticalAlignment="Center"
+                      ToolTip.Tip="{Binding Updates.VersionText}">
             <Border Width="36" Height="36" CornerRadius="{StaticResource SlRadiusMd}"
                     Background="{StaticResource SlCard}"
                     BorderBrush="{StaticResource SlAccentTint30}" BorderThickness="1"
@@ -84,6 +85,16 @@
                      VerticalAlignment="Center" Text="{Binding SelectedFeature.Title}" />
 
           <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="12" VerticalAlignment="Center" Margin="0,0,16,0">
+            <!-- Shown once a newer release is found (Features/Updates). -->
+            <Button Theme="{StaticResource SoftButton}" Command="{Binding Updates.InstallCommand}"
+                    IsVisible="{Binding Updates.IsOffered}" IsEnabled="{Binding Updates.IsIdle}"
+                    ToolTip.Tip="{Binding Updates.Hint}"
+                    chrome:WindowDecorationProperties.ElementRole="User">
+              <StackPanel Orientation="Horizontal" Spacing="6">
+                <ctl:Icon Width="16" Height="16" Data="{StaticResource IconDownload}" />
+                <TextBlock Text="{Binding Updates.ButtonText}" VerticalAlignment="Center" />
+              </StackPanel>
+            </Button>
             <Border Classes="live" Classes.paused="{Binding IsPaused}">
               <StackPanel Orientation="Horizontal" Spacing="8">
                 <Ellipse Classes="dot" Classes.pulse="{Binding Pulse}"
