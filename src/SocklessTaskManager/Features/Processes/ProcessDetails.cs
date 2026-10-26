@@ -157,7 +157,7 @@ public sealed class ProcessDetails : ObservableObject
         _workingSet = new Fact("Working set", string.Empty);
         _commit = new Fact("Commit", string.Empty);
         _io = new Fact("I/O so far", string.Empty);
-        _managed = new ManagedMemory(reading.Key.Id);
+        _managed = new ManagedMemory(reading.Key.Id, reading.Name, () => owner.OpenManaged(this), owner.CloseManaged);
 
         Update(reading);
         RebuildFacts();
@@ -211,7 +211,7 @@ public sealed class ProcessDetails : ObservableObject
 
     public ObservableCollection<Fact> Facts { get; } = [];
 
-    /// <summary>The .NET runtime's GC counters, while a .NET process runs.</summary>
+    /// <summary>The .NET runtime's view of its memory, while a .NET process runs.</summary>
     public ManagedMemory? Managed
     {
         get => _managed;

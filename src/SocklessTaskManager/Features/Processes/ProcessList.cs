@@ -4,6 +4,7 @@ using System.Globalization;
 using System.Windows.Input;
 using Avalonia.Threading;
 using Sockless.TaskManager.Core;
+using Sockless.TaskManager.Features.Processes.Dotnet;
 
 namespace Sockless.TaskManager.Features.Processes;
 
@@ -66,6 +67,7 @@ public sealed class ProcessList : ObservableObject, IDisposable
     private string _summary = string.Empty;
     private bool _isEmpty;
     private ProcessDetails? _details;
+    private ManagedMemory? _managedPage;
     private Confirmation? _confirmation;
 
     internal ProcessList()
@@ -325,6 +327,7 @@ public sealed class ProcessList : ObservableObject, IDisposable
             {
                 previous?.Watch(false);
                 value?.Watch(_isShown);
+                ManagedPage = null;
                 OnPropertyChanged(nameof(HasDetails));
                 MarkSelection();
             }
@@ -332,6 +335,19 @@ public sealed class ProcessList : ObservableObject, IDisposable
     }
 
     public bool HasDetails => _details is not null;
+
+    /// <summary>The .NET memory page, open over the table for the selected process.</summary>
+    public ManagedMemory? ManagedPage
+    {
+        get => _managedPage;
+        private set
+        {
+            if (Set(ref _managedPage, value))
+                OnPropertyChanged(nameof(HasManagedPage));
+        }
+    }
+
+    public bool HasManagedPage => _managedPage is not null;
 
     /// <summary>A destructive action waiting for the user to confirm it.</summary>
     public Confirmation? Confirmation
@@ -402,6 +418,10 @@ public sealed class ProcessList : ObservableObject, IDisposable
 
         if (endedChanged)
             EndedChanged();
+
+        // The process ended: there's no runtime left to show.
+        if (_managedPage is not null && !ReferenceEquals(_details?.Managed, _managedPage))
+            ManagedPage = null;
     }
 
     public void Dispose()
@@ -441,6 +461,14 @@ public sealed class ProcessList : ObservableObject, IDisposable
     }
 
     internal void CloseDetails() => Details = null;
+
+    internal void OpenManaged(ProcessDetails details)
+    {
+        if (ReferenceEquals(_details, details) && details.Managed is { } managed)
+            ManagedPage = managed;
+    }
+
+    internal void CloseManaged() => ManagedPage = null;
 
     internal bool IsRunning(ProcessKey key) => _latest?.ByKey.ContainsKey(key) ?? false;
 

@@ -5,20 +5,20 @@ using Sockless.TaskManager.Core;
 namespace Sockless.TaskManager.Features.Processes.Dotnet;
 
 /// <summary>
-/// The .NET section of the details pane: the runtime's own GC counters, streamed over its
-/// diagnostics port once a second (what dotnet-counters shows), and on request a snapshot of the
-/// heap by type (what dotnet-gcdump shows). Only a .NET (Core) process with diagnostics on has
-/// the port; for anything else the section stays hidden.
+/// A .NET process's memory as its runtime sees it: the GC counters, streamed over its diagnostics
+/// port once a second (what dotnet-counters shows), and on request a snapshot of the heap by type
+/// (what dotnet-gcdump shows). The details pane shows a line of it; the .NET memory page, the rest.
+/// Only a .NET (Core) process with diagnostics on has the port; for anything else neither shows.
 /// </summary>
 public sealed class ManagedMemory : ObservableObject
 {
     private const double BytesPerMegabyte = 1024 * 1024;
     private const double RuntimeMegabyte = 1_000_000; // the runtime's "MB" counters divide by this
     private const uint VerboseLevel = 5;
-    private const int ShownTypes = 30;
     private static readonly TimeSpan HandshakeTimeout = TimeSpan.FromSeconds(5);
 
     private readonly int _processId;
+    private readonly List<(HeapTypeTotals Totals, HeapType Row)> _heapRows = [];
     private readonly Lock _lock = new();
     private readonly Dictionary<string, double> _latest = new(StringComparer.Ordinal);
     private readonly Dictionary<string, double> _totals = new(StringComparer.Ordinal);
@@ -30,7 +30,9 @@ public sealed class ManagedMemory : ObservableObject
     private readonly Fact _fragmentation = new("Fragmented", "—");
     private readonly Fact _committed = new("Committed", "—");
     private readonly Fact _allocations = new("Allocating", "—");
-    private readonly Fact _collections = new("Collections", "—");
+    private readonly Fact _gen0Collections = new("Gen 0 GCs", "—");
+    private readonly Fact _gen1Collections = new("Gen 1 GCs", "—");
+    private readonly Fact _gen2Collections = new("Gen 2 GCs", "—");
     private readonly Fact _pauses = new("Paused", "—");
     private CancellationTokenSource? _run;
     private bool _isPresent;
@@ -45,6 +47,11 @@ public sealed class ManagedMemory : ObservableObject
     private string? _snapshotStatus;
     private bool _snapshotIsError;
     private string? _snapshotSummary;
+    private HeapSnapshot? _heap;
+    private HeapSort _sort = HeapSort.Bytes;
+    private string _heapFilter = string.Empty;
+    private string? _heapCountText;
+    private string? _runtimeText;
 
     // Written by the reading task, read by Apply.
     private volatile bool _pendingPresent;
@@ -54,12 +61,40 @@ public sealed class ManagedMemory : ObservableObject
     private volatile string? _pendingVersion;
     private bool _received;
 
-    internal ManagedMemory(int processId)
+    internal ManagedMemory(int processId, string processName, Action open, Action close)
     {
         _processId = processId;
-        Facts = [_gen0, _gen1, _gen2, _large, _pinned, _fragmentation, _committed, _allocations, _collections, _pauses];
+        ProcessName = processName;
+        Generations = [_gen0, _gen1, _gen2, _large, _pinned];
+        Collector = [_committed, _fragmentation, _allocations, _gen0Collections, _gen1Collections, _gen2Collections, _pauses];
         SnapshotCommand = new RelayCommand(TakeSnapshot);
+        OpenCommand = new RelayCommand(open);
+        CloseCommand = new RelayCommand(close);
+        SortByCountCommand = new RelayCommand(() => Sort(HeapSort.Count));
+        SortByBytesCommand = new RelayCommand(() => Sort(HeapSort.Bytes));
+        SortByRetainedCommand = new RelayCommand(() => Sort(HeapSort.Retained));
+        ClearHeapFilterCommand = new RelayCommand(() => HeapFilter = string.Empty);
     }
+
+    private enum HeapSort
+    {
+        Count,
+        Bytes,
+        Retained,
+    }
+
+    public string ProcessName { get; }
+
+    /// <summary>"PID 4120 · .NET 9.0.3".</summary>
+    public string Subtitle => _runtimeText is null
+        ? $"PID {_processId.ToString(System.Globalization.CultureInfo.CurrentCulture)}"
+        : $"PID {_processId.ToString(System.Globalization.CultureInfo.CurrentCulture)} · {_runtimeText}";
+
+    /// <summary>Opens the .NET memory page.</summary>
+    public ICommand OpenCommand { get; }
+
+    /// <summary>Back to the process list.</summary>
+    public ICommand CloseCommand { get; }
 
     /// <summary>The process has a .NET diagnostics port: show the section.</summary>
     public bool IsPresent
@@ -103,8 +138,11 @@ public sealed class ManagedMemory : ObservableObject
 
     public ICommand RestartElevatedCommand { get; } = new RelayCommand(Elevation.Restart);
 
-    /// <summary>"Runtime .NET 9.0.3" first, once it's known, then the counters.</summary>
-    public ObservableCollection<Fact> Facts { get; }
+    /// <summary>Where the heap is, by generation, as of the last collection.</summary>
+    public IReadOnlyList<Fact> Generations { get; }
+
+    /// <summary>What the collector is doing: commit, fragmentation, allocations, collections, pauses.</summary>
+    public IReadOnlyList<Fact> Collector { get; }
 
     /// <summary>Bytes in the GC heap, in MB.</summary>
     public History Heap { get; } = new();
@@ -118,8 +156,15 @@ public sealed class ManagedMemory : ObservableObject
     public double HeapMaximum
     {
         get => _heapMaximum;
-        private set => Set(ref _heapMaximum, value);
+        private set
+        {
+            if (Set(ref _heapMaximum, value))
+                OnPropertyChanged(nameof(HeapScale));
+        }
     }
+
+    /// <summary>The graph's top, for its frame.</summary>
+    public string HeapScale => Format.Bytes(_heapMaximum * BytesPerMegabyte);
 
     public ICommand SnapshotCommand { get; }
 
@@ -162,8 +207,50 @@ public sealed class ManagedMemory : ObservableObject
 
     public bool HasSnapshot => _snapshotSummary is not null;
 
-    /// <summary>The last snapshot's largest types.</summary>
+    /// <summary>The last snapshot's types, sorted, matching <see cref="HeapFilter"/>.</summary>
     public ObservableCollection<HeapType> HeapTypes { get; } = [];
+
+    /// <summary>"199 types", or "12 of 199 types" while filtering.</summary>
+    public string? HeapCountText
+    {
+        get => _heapCountText;
+        private set => Set(ref _heapCountText, value);
+    }
+
+    /// <summary>Part of a type's name, any case.</summary>
+    public string HeapFilter
+    {
+        get => _heapFilter;
+        set
+        {
+            if (!Set(ref _heapFilter, value))
+                return;
+            OnPropertyChanged(nameof(HasHeapFilter));
+            ShowHeap();
+        }
+    }
+
+    public bool HasHeapFilter => _heapFilter.Length > 0;
+
+    /// <summary>A snapshot, but no type matches the filter.</summary>
+    public bool HasNoMatches => _heap is not null && HeapTypes.Count == 0;
+
+    public ICommand ClearHeapFilterCommand { get; }
+
+    public ICommand SortByCountCommand { get; }
+
+    public ICommand SortByBytesCommand { get; }
+
+    public ICommand SortByRetainedCommand { get; }
+
+    public bool IsSortedByCount => _sort == HeapSort.Count;
+
+    public bool IsSortedByBytes => _sort == HeapSort.Bytes;
+
+    public bool IsSortedByRetained => _sort == HeapSort.Retained;
+
+    /// <summary>The last snapshot knows what each type keeps alive.</summary>
+    public bool HasRetained => _heap?.HasRetained == true;
 
     /// <summary>Starts streaming counters, if the process has a diagnostics port. UI thread.</summary>
     internal void Start()
@@ -211,6 +298,10 @@ public sealed class ManagedMemory : ObservableObject
             try
             {
                 snapshot.Result = await snapshot.Walk.RunAsync(_processId, snapshot.Cancel.Token);
+
+                // Working out the dominators of a big heap takes hundreds of MB, briefly. Hand
+                // it back to Windows now rather than whenever the GC next gets round to it.
+                GC.Collect(2, GCCollectionMode.Aggressive, blocking: true, compacting: true);
             }
             catch (OperationCanceledException) when (snapshot.Cancel.IsCancellationRequested)
             {
@@ -238,14 +329,19 @@ public sealed class ManagedMemory : ObservableObject
 
         if (snapshot.Result is { } result)
         {
-            HeapTypes.Clear();
-            foreach (var type in result.Types.Take(ShownTypes))
-                HeapTypes.Add(type);
+            _heap = result;
+            _heapRows.Clear();
+            foreach (var totals in result.Types)
+                _heapRows.Add((totals, new HeapType(totals, result.Bytes)));
+            OnPropertyChanged(nameof(HasRetained));
+            if (!result.HasRetained)
+                Sort(HeapSort.Bytes);
+            ShowHeap();
 
-            var shown = result.Types.Count > ShownTypes
-                ? $" · largest {Format.Number(ShownTypes)} of {Format.Number(result.Types.Count)} types"
-                : string.Empty;
-            SnapshotSummary = $"{Format.Number(result.Objects)} objects · {Format.Bytes(result.Bytes)} · taken {result.TakenAt.ToString("T", System.Globalization.CultureInfo.CurrentCulture)}{shown}";
+            var retained = result.HasRetained
+                ? string.Empty
+                : $" · over {Format.Number(HeapGraph.MaxObjects)} objects, too many to work out what each type keeps alive";
+            SnapshotSummary = $"{Format.Number(result.Objects)} objects · {Format.Bytes(result.Bytes)} · taken {result.TakenAt.ToString("T", System.Globalization.CultureInfo.CurrentCulture)}{retained}";
             SnapshotStatus = null;
         }
         else if (snapshot.Error is { } error)
@@ -255,14 +351,57 @@ public sealed class ManagedMemory : ObservableObject
         }
         else
         {
-            SnapshotStatus = snapshot.Walk.HasStarted
-                ? $"Walking the heap… {Format.Number(snapshot.Walk.Objects)} objects so far"
-                : "Starting a full collection…";
+            SnapshotStatus = snapshot.Walk.IsAnalyzing
+                ? $"Working out what each type keeps alive, across {Format.Number(snapshot.Walk.Objects)} objects…"
+                : snapshot.Walk.HasStarted
+                    ? $"Walking the heap… {Format.Number(snapshot.Walk.Objects)} objects so far"
+                    : "Starting a full collection…";
             return;
         }
 
         _snapshot = null;
         IsSnapshotting = false;
+    }
+
+    /// <summary>Largest first by the column chosen: descending only, as "what's biggest" is the question.</summary>
+    private void Sort(HeapSort sort)
+    {
+        if (_sort == sort || (sort == HeapSort.Retained && !HasRetained))
+            return;
+
+        _sort = sort;
+        OnPropertyChanged(nameof(IsSortedByCount));
+        OnPropertyChanged(nameof(IsSortedByBytes));
+        OnPropertyChanged(nameof(IsSortedByRetained));
+        ShowHeap();
+    }
+
+    private void ShowHeap()
+    {
+        HeapTypes.Clear();
+        if (_heap is null)
+        {
+            HeapCountText = null;
+            return;
+        }
+
+        var filter = _heapFilter.Trim();
+        var matching = filter.Length == 0
+            ? _heapRows
+            : _heapRows.Where(r => r.Row.FullName.Contains(filter, StringComparison.OrdinalIgnoreCase));
+        var sorted = _sort switch
+        {
+            HeapSort.Count => matching.OrderByDescending(r => r.Totals.Count),
+            HeapSort.Retained => matching.OrderByDescending(r => r.Totals.Retained).ThenByDescending(r => r.Totals.Bytes),
+            _ => matching.OrderByDescending(r => r.Totals.Bytes),
+        };
+        foreach (var (_, row) in sorted)
+            HeapTypes.Add(row);
+
+        OnPropertyChanged(nameof(HasNoMatches));
+        HeapCountText = filter.Length == 0
+            ? $"{Format.Number(_heapRows.Count)} types"
+            : $"{Format.Number(HeapTypes.Count)} of {Format.Number(_heapRows.Count)} types";
     }
 
     /// <summary>The counters that arrived since the last tick, into properties. UI thread.</summary>
@@ -272,8 +411,12 @@ public sealed class ManagedMemory : ObservableObject
         Status = _pendingStatus;
         StatusIsError = _pendingIsError;
         OfferElevation = _pendingDenied && !Elevation.IsElevated;
-        if (_pendingVersion is { } version && Facts[0].Label != "Runtime")
-            Facts.Insert(0, new Fact("Runtime", $".NET {version}"));
+        if (_pendingVersion is { } version && _runtimeText is null)
+        {
+            _runtimeText = $".NET {version}";
+            OnPropertyChanged(nameof(Subtitle));
+        }
+
         ApplySnapshot();
 
         Dictionary<string, double> latest;
@@ -303,16 +446,19 @@ public sealed class ManagedMemory : ObservableObject
         _fragmentation.Value = latest.TryGetValue("gc-fragmentation", out var fragmentation) ? Format.Percent(fragmentation) : "—";
         _committed.Value = latest.TryGetValue("gc-committed", out var committed) ? Format.Bytes(committed * RuntimeMegabyte) : "—";
         _allocations.Value = latest.TryGetValue("alloc-rate", out var rate) ? Format.BytesPerSecond(rate) : "—";
-        _collections.Value = totals.TryGetValue("gen-0-gc-count", out var gen0)
-            ? $"{Format.Number((long)gen0)} gen 0 · {Format.Number((long)totals.GetValueOrDefault("gen-1-gc-count"))} gen 1 · {Format.Number((long)totals.GetValueOrDefault("gen-2-gc-count"))} gen 2"
-            : "—";
+        _gen0Collections.Value = CountOf(totals, "gen-0-gc-count");
+        _gen1Collections.Value = CountOf(totals, "gen-1-gc-count");
+        _gen2Collections.Value = CountOf(totals, "gen-2-gc-count");
         _pauses.Value = totals.TryGetValue("total-pause-time-by-gc", out var paused)
-            ? $"{Format.Milliseconds(paused)} in total"
+            ? Format.Milliseconds(paused)
             : latest.TryGetValue("time-in-gc", out var share) ? $"{Format.Percent(share)} of the time" : "—";
     }
 
     private static string BytesOf(Dictionary<string, double> values, string name) =>
         values.TryGetValue(name, out var bytes) ? Format.Bytes(bytes) : "—";
+
+    private static string CountOf(Dictionary<string, double> values, string name) =>
+        values.TryGetValue(name, out var count) ? Format.Number((long)count) : "—";
 
     private async Task RunAsync(CancellationToken cancel)
     {

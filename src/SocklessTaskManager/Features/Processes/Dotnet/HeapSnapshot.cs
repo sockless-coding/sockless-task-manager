@@ -3,37 +3,54 @@ using Sockless.TaskManager.Core;
 
 namespace Sockless.TaskManager.Features.Processes.Dotnet;
 
-/// <summary>One type's objects in a heap snapshot.</summary>
-public sealed class HeapType(string fullName, long count, long bytes, long totalBytes)
+/// <summary>
+/// One type's objects in a heap snapshot: how many, their own bytes, and what they keep alive
+/// (themselves included; null when the heap was too big to work it out).
+/// </summary>
+internal sealed record HeapTypeTotals(string Name, long Count, long Bytes, long? Retained);
+
+/// <summary>Every object on the heap at one moment, by type.</summary>
+internal sealed record HeapSnapshot(IReadOnlyList<HeapTypeTotals> Types, long Objects, long Bytes, bool HasRetained, DateTime TakenAt);
+
+/// <summary>A row of the heap table.</summary>
+public sealed class HeapType
 {
+    internal HeapType(HeapTypeTotals totals, long heapBytes)
+    {
+        Name = TypeName.Short(totals.Name);
+        FullName = TypeName.Full(totals.Name);
+        CountText = Format.Number(totals.Count);
+        BytesText = Format.Bytes(totals.Bytes);
+        RetainedText = totals.Retained is { } retained ? Format.Bytes(retained) : "—";
+
+        var percent = heapBytes > 0 ? 100.0 * totals.Bytes / heapBytes : 0;
+        ShareText = percent is > 0 and < 1 ? "<1%" : Format.Percent(percent);
+    }
+
     /// <summary>"Dictionary&lt;String, List&lt;Int32&gt;&gt;".</summary>
-    public string Name { get; } = TypeName.Short(fullName);
+    public string Name { get; }
 
     /// <summary>"System.Collections.Generic.Dictionary&lt;System.String, …&gt;".</summary>
-    public string FullName { get; } = TypeName.Full(fullName);
+    public string FullName { get; }
 
-    public string SizeText => Format.Bytes(bytes);
+    /// <summary>Objects of this type.</summary>
+    public string CountText { get; }
 
-    /// <summary>"12,345 objects · 38%".</summary>
-    public string Detail => $"{Format.Number(count)} {(count == 1 ? "object" : "objects")} · {Share}";
+    /// <summary>The objects' own bytes.</summary>
+    public string BytesText { get; }
 
-    private string Share
-    {
-        get
-        {
-            var percent = totalBytes > 0 ? 100.0 * bytes / totalBytes : 0;
-            return percent is > 0 and < 1 ? "<1%" : Format.Percent(percent);
-        }
-    }
+    /// <summary>What the objects keep alive, themselves included; "—" when it wasn't worked out.</summary>
+    public string RetainedText { get; }
+
+    /// <summary>Own bytes as a share of the heap.</summary>
+    public string ShareText { get; }
 }
-
-/// <summary>Every object on the heap at one moment, by type, largest first.</summary>
-internal sealed record HeapSnapshot(IReadOnlyList<HeapType> Types, long Objects, long Bytes, DateTime TakenAt);
 
 /// <summary>
 /// Walks a .NET process's heap the way dotnet-gcdump does: a session with the runtime's
 /// heap-dump keywords makes it run a full, blocking collection and describe every live object
-/// (address, size, type) and every type as it goes. Only sizes by type are kept.
+/// (address, size, type, references), every root and every type as it goes. Kept: sizes by type,
+/// and the graph (<see cref="HeapGraph"/>) for what each type keeps alive.
 /// </summary>
 internal sealed class HeapWalk
 {
@@ -49,7 +66,10 @@ internal sealed class HeapWalk
     private const int GcStartEvent = 1;
     private const int GcEndEvent = 2;
     private const int BulkTypeEvent = 15;
+    private const int BulkRootEdgeEvent = 16;
+    private const int BulkDependentEdgeEvent = 17;
     private const int BulkNodeEvent = 18;
+    private const int BulkEdgeEvent = 19;
 
     private const uint BackgroundGc = 1;
 
@@ -63,16 +83,21 @@ internal sealed class HeapWalk
 
     private readonly Dictionary<ulong, string> _types = [];
     private readonly Dictionary<ulong, (long Count, long Bytes)> _byType = [];
+    private readonly HeapGraph _graph = new();
     private readonly TaskCompletionSource _collected = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private long _gc = -1;
     private long _objects;
     private long _lastEventTicks = Environment.TickCount64;
+    private volatile bool _isAnalyzing;
 
     /// <summary>Objects described so far, for progress. Any thread.</summary>
     public long Objects => Interlocked.Read(ref _objects);
 
     /// <summary>Whether the collection has started, so it's walking rather than waiting.</summary>
     public bool HasStarted => Interlocked.Read(ref _gc) >= 0;
+
+    /// <summary>The walk is done, and what each type keeps alive is being worked out.</summary>
+    public bool IsAnalyzing => _isAnalyzing;
 
     public async Task<HeapSnapshot> RunAsync(int processId, CancellationToken cancel)
     {
@@ -109,6 +134,8 @@ internal sealed class HeapWalk
             await reading;
         }
 
+        _isAnalyzing = true;
+        cancel.ThrowIfCancellationRequested();
         return Summarize();
     }
 
@@ -165,16 +192,65 @@ internal sealed class HeapWalk
                 reader.Offset += sizeof(ushort);
                 for (var i = 0; i < count; i++)
                 {
-                    reader.UInt64();
+                    var address = reader.UInt64();
                     var size = (long)reader.UInt64();
                     var type = reader.UInt64();
-                    reader.UInt64();
+                    var edges = (int)reader.UInt64();
 
                     var (objects, bytes) = _byType.GetValueOrDefault(type);
                     _byType[type] = (objects + 1, bytes + size);
+                    _graph.AddObject(address, size, type, edges);
                 }
 
                 Interlocked.Add(ref _objects, count);
+                break;
+            }
+
+            case BulkEdgeEvent when _gc >= 0:
+            {
+                // Index, count and CLR instance, then per reference, in the objects' order: the
+                // object it points to and the field (unused).
+                reader.UInt32();
+                var count = reader.UInt32();
+                reader.Offset += sizeof(ushort);
+                for (var i = 0; i < count; i++)
+                {
+                    _graph.AddEdge(reader.UInt64());
+                    reader.UInt32();
+                }
+
+                break;
+            }
+
+            case BulkRootEdgeEvent when _gc >= 0:
+            {
+                // Index, count and CLR instance, then per root: the object, its kind, flags, and id.
+                reader.UInt32();
+                var count = reader.UInt32();
+                reader.Offset += sizeof(ushort);
+                for (var i = 0; i < count; i++)
+                {
+                    _graph.AddRoot(reader.UInt64());
+                    reader.Offset += sizeof(byte) + sizeof(uint) + sizeof(ulong);
+                }
+
+                break;
+            }
+
+            case BulkDependentEdgeEvent when _gc >= 0:
+            {
+                // Index, count and CLR instance, then per conditional weak table entry: key, value, id.
+                reader.UInt32();
+                var count = reader.UInt32();
+                reader.Offset += sizeof(ushort);
+                for (var i = 0; i < count; i++)
+                {
+                    var key = reader.UInt64();
+                    var value = reader.UInt64();
+                    reader.UInt64();
+                    _graph.AddDependent(key, value);
+                }
+
                 break;
             }
         }
@@ -182,23 +258,25 @@ internal sealed class HeapWalk
 
     private HeapSnapshot Summarize()
     {
+        var takenAt = DateTime.Now;
+        var retainedByType = _graph.IsTooLarge ? null : _graph.RetainedByType();
+
         // Types with the same name (loaded twice, in different load contexts) are one row.
-        var byName = new Dictionary<string, (long Count, long Bytes)>(StringComparer.Ordinal);
+        var byName = new Dictionary<string, (long Count, long Bytes, long Retained)>(StringComparer.Ordinal);
         long objects = 0, bytes = 0;
         foreach (var (type, (count, size)) in _byType)
         {
             var name = _types.GetValueOrDefault(type) ?? $"Type 0x{type.ToString("X", CultureInfo.InvariantCulture)}";
-            var (c, b) = byName.GetValueOrDefault(name);
-            byName[name] = (c + count, b + size);
+            var (c, b, r) = byName.GetValueOrDefault(name);
+            byName[name] = (c + count, b + size, r + (retainedByType?.GetValueOrDefault(type) ?? 0));
             objects += count;
             bytes += size;
         }
 
         var types = byName
-            .OrderByDescending(t => t.Value.Bytes)
-            .Select(t => new HeapType(t.Key, t.Value.Count, t.Value.Bytes, bytes))
+            .Select(t => new HeapTypeTotals(t.Key, t.Value.Count, t.Value.Bytes, retainedByType is null ? null : t.Value.Retained))
             .ToArray();
-        return new HeapSnapshot(types, objects, bytes, DateTime.Now);
+        return new HeapSnapshot(types, objects, bytes, retainedByType is not null, takenAt);
     }
 }
 
@@ -217,8 +295,8 @@ internal static class TypeName
         var start = 0;
         for (var i = 0; i <= name.Length; i++)
         {
-            var c = i < name.Length ? name[i] : ' ';
-            if (c is not ('[' or ']' or ',' or '`' or ' '))
+            var c = i < name.Length ? name[i] : '\0';
+            if (c is not ('[' or ']' or ',' or '`' or '\0'))
                 continue;
 
             var identifier = name.AsSpan(start, i - start);

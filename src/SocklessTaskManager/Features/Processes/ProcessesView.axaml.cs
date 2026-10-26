@@ -128,7 +128,7 @@ public sealed partial class ProcessesView : UserControl
 
     private void OnWindowKeyDown(object? sender, KeyEventArgs e)
     {
-        if (e.Key == Key.F && e.KeyModifiers == KeyModifiers.Control && _list is not { HasConfirmation: true })
+        if (e.Key == Key.F && e.KeyModifiers == KeyModifiers.Control && _list is not ({ HasConfirmation: true } or { HasManagedPage: true }))
         {
             Search.Focus(NavigationMethod.Tab);
             Search.SelectAll();
@@ -152,6 +152,8 @@ public sealed partial class ProcessesView : UserControl
 
         if (list.Confirmation is { } confirmation)
             confirmation.CancelCommand.Execute(null);
+        else if (list.HasManagedPage)
+            list.CloseManaged();
         else if (list.HasDetails)
             list.CloseDetails();
         else

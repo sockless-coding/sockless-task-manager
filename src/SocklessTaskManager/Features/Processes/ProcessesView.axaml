@@ -88,8 +88,8 @@
     </DataTemplate>
 
     <!--
-      The .NET section of the details pane (dotnet:ManagedMemory): GC heap over time, then where
-      it is by generation. Hidden unless the process has a .NET diagnostics port.
+      The .NET line of the details pane (dotnet:ManagedMemory): the GC heap and a way into the
+      .NET memory page. Hidden unless the process has a .NET diagnostics port.
     -->
     <DataTemplate x:Key="ManagedMemoryTemplate" x:DataType="dotnet:ManagedMemory">
       <StackPanel Spacing="6" IsVisible="{Binding IsPresent}">
@@ -112,59 +112,18 @@
           </Grid>
         </Border>
 
-        <StackPanel Spacing="4" Margin="0,2,0,4" IsVisible="{Binding HasCounters}">
-          <Grid ColumnDefinitions="*,Auto">
-            <TextBlock Classes="caption" Text="GC heap" VerticalAlignment="Center" />
-            <TextBlock Grid.Column="1" Classes="number" Text="{Binding HeapText}" />
-          </Grid>
-          <ctl:HistoryGraph Height="48" GridDivisions="4" Series="{Binding Heap}"
-                            Maximum="{Binding HeapMaximum}" Stroke="{StaticResource SlSeries3}" />
-        </StackPanel>
-
-        <ItemsControl ItemsSource="{Binding Facts}" ItemTemplate="{StaticResource FactTemplate}" IsVisible="{Binding HasCounters}" />
-        <TextBlock Classes="caption" TextWrapping="Wrap" IsVisible="{Binding HasCounters}"
-                   Text="From the runtime's counters. Generation sizes are as of the last collection; collections and pauses count from when this pane opened." />
-
-        <!-- What's on the heap, by type: only when asked, since it pauses the process. -->
-        <StackPanel Spacing="8" Margin="0,14,0,0" IsVisible="{Binding HasCounters}">
-          <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
-            <ctl:CapsText Classes="label" Value="Heap by type" VerticalAlignment="Center" />
-            <Button Grid.Column="1" Theme="{StaticResource SoftButton}" Command="{Binding SnapshotCommand}"
-                    IsEnabled="{Binding !IsSnapshotting}"
-                    ToolTip.Tip="Run a full garbage collection and list every live object by type">
-              <StackPanel Orientation="Horizontal" Spacing="6">
-                <ctl:Icon Width="14" Height="14" Data="{StaticResource IconMemory}" />
-                <TextBlock Text="Snapshot heap" VerticalAlignment="Center" />
-              </StackPanel>
-            </Button>
-          </Grid>
-          <TextBlock Classes="caption" TextWrapping="Wrap" IsVisible="{Binding !HasSnapshot}"
-                     Text="A snapshot runs a full collection and pauses the process while the heap is walked: a moment for most, seconds for a heap of many gigabytes." />
-
-          <Border Classes="callout" Classes.danger="{Binding SnapshotIsError}" IsVisible="{Binding HasSnapshotStatus}">
-            <Grid ColumnDefinitions="Auto,*" ColumnSpacing="8">
-              <ctl:Icon Classes="status" Width="16" Height="16" VerticalAlignment="Top"
-                        Data="{StaticResource IconWarning}" IsVisible="{Binding SnapshotIsError}" />
-              <TextBlock Grid.Column="1" Text="{Binding SnapshotStatus}" TextWrapping="Wrap" FontSize="{StaticResource SlTextSmall}" />
-            </Grid>
-          </Border>
-
-          <StackPanel Spacing="4" IsVisible="{Binding HasSnapshot}">
-            <TextBlock Classes="caption" TextWrapping="Wrap" Text="{Binding SnapshotSummary}" />
-            <ItemsControl ItemsSource="{Binding HeapTypes}">
-              <ItemsControl.ItemTemplate>
-                <DataTemplate x:DataType="dotnet:HeapType">
-                  <Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto" ColumnSpacing="8" Margin="0,3">
-                    <TextBlock Classes="mono" FontSize="{StaticResource SlTextSmall}" Text="{Binding Name}"
-                               TextTrimming="CharacterEllipsis" ToolTip.Tip="{Binding FullName}" />
-                    <TextBlock Grid.Column="1" Classes="number" Text="{Binding SizeText}" />
-                    <TextBlock Grid.Row="1" Grid.ColumnSpan="2" Classes="caption" Text="{Binding Detail}" />
-                  </Grid>
-                </DataTemplate>
-              </ItemsControl.ItemTemplate>
-            </ItemsControl>
-          </StackPanel>
-        </StackPanel>
+        <Grid ColumnDefinitions="96,*,Auto" ColumnSpacing="8" IsVisible="{Binding HasCounters}">
+          <TextBlock Classes="caption" Text="GC heap" VerticalAlignment="Center" />
+          <TextBlock Grid.Column="1" Classes="mono" FontSize="{StaticResource SlTextSmall}" VerticalAlignment="Center"
+                     Text="{Binding HeapText}" />
+          <Button Grid.Column="2" Theme="{StaticResource SoftButton}" Padding="8,3" Command="{Binding OpenCommand}"
+                  ToolTip.Tip="GC counters, and what's on the heap by type">
+            <StackPanel Orientation="Horizontal" Spacing="4">
+              <TextBlock Text="Open" VerticalAlignment="Center" />
+              <ctl:Icon Width="14" Height="14" Data="{StaticResource IconChevronRight}" />
+            </StackPanel>
+          </Button>
+        </Grid>
       </StackPanel>
     </DataTemplate>
 
@@ -373,7 +332,7 @@
 
   <Panel>
     <Grid RowDefinitions="Auto,Auto,Auto,*,Auto" Margin="{StaticResource SlContentPadding}"
-          IsEnabled="{Binding !HasConfirmation}">
+          IsEnabled="{Binding !HasConfirmation}" IsVisible="{Binding !HasManagedPage}">
       <StackPanel Spacing="4" Margin="0,0,0,16">
         <TextBlock Classes="page-title" Text="Processes" />
         <TextBlock Classes="secondary" Text="{Binding Summary}" />
@@ -731,6 +690,15 @@
         </ScrollViewer>
       </StackPanel>
     </Grid>
+
+    <!-- ========== .NET memory of the selected process, in place of the page until closed ========== -->
+    <ContentControl Margin="{StaticResource SlContentPadding}" Content="{Binding ManagedPage}">
+      <ContentControl.ContentTemplate>
+        <DataTemplate x:DataType="dotnet:ManagedMemory">
+          <dotnet:ManagedMemoryView />
+        </DataTemplate>
+      </ContentControl.ContentTemplate>
+    </ContentControl>
 
     <!-- ========== Confirmation (components.md → Dialogs) ========== -->
     <Border Background="{StaticResource SlScrim}" IsVisible="{Binding HasConfirmation}">

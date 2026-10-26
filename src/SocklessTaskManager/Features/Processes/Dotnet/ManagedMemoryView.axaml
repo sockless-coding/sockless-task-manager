@@ -1,0 +1,218 @@
+<!--
+  The .NET memory page, opened from a process's details: breadcrumbs back to the process list,
+  the GC heap over time beside where it is by generation and what the collector is doing, then
+  the heap by type filling the rest. Only the type table scrolls, and it is virtualized, so every
+  type is listed. Taking a snapshot pauses the process, so it waits for the button.
+-->
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:ctl="using:Sockless.TaskManager.Controls"
+             xmlns:proc="using:Sockless.TaskManager.Features.Processes"
+             xmlns:dotnet="using:Sockless.TaskManager.Features.Processes.Dotnet"
+             x:Class="Sockless.TaskManager.Features.Processes.Dotnet.ManagedMemoryView"
+             x:DataType="dotnet:ManagedMemory">
+
+  <UserControl.Resources>
+    <!-- A counter: label and value. -->
+    <DataTemplate x:Key="CounterTemplate" x:DataType="proc:Fact">
+      <Grid ColumnDefinitions="110,*" ColumnSpacing="8" Margin="0,3">
+        <TextBlock Classes="caption" Text="{Binding Label}" />
+        <TextBlock Grid.Column="1" Classes="mono" FontSize="{StaticResource SlTextSmall}" Text="{Binding Value}"
+                   TextWrapping="Wrap" />
+      </Grid>
+    </DataTemplate>
+  </UserControl.Resources>
+
+  <UserControl.Styles>
+    <Style Selector="TextBlock.cell">
+      <Setter Property="FontFamily" Value="{StaticResource SlFontMono}" />
+      <Setter Property="FontSize" Value="{StaticResource SlTextSmall}" />
+      <Setter Property="HorizontalAlignment" Value="Right" />
+      <Setter Property="VerticalAlignment" Value="Center" />
+    </Style>
+  </UserControl.Styles>
+
+  <Grid RowDefinitions="Auto,Auto,*">
+    <StackPanel Spacing="10" Margin="0,0,0,16">
+      <StackPanel Orientation="Horizontal" AutomationProperties.Name="Breadcrumb">
+        <Button Theme="{StaticResource LinkButton}" Command="{Binding CloseCommand}" ToolTip.Tip="Back to processes (Esc)">
+          <TextBlock Classes="mono" FontSize="{StaticResource SlTextSmall}" Text="Processes" />
+        </Button>
+        <TextBlock Text="/" Margin="8,0" Classes="mono" FontSize="{StaticResource SlTextSmall}"
+                   Foreground="{StaticResource SlBorderAccent}" />
+        <Button Theme="{StaticResource LinkButton}" Command="{Binding CloseCommand}" ToolTip.Tip="Back to its details (Esc)">
+          <TextBlock Classes="mono" FontSize="{StaticResource SlTextSmall}" Text="{Binding ProcessName}" />
+        </Button>
+        <TextBlock Text="/" Margin="8,0" Classes="mono" FontSize="{StaticResource SlTextSmall}"
+                   Foreground="{StaticResource SlBorderAccent}" />
+        <TextBlock Classes="mono secondary" FontSize="{StaticResource SlTextSmall}" Text=".NET memory" />
+      </StackPanel>
+
+      <Grid ColumnDefinitions="*,Auto" ColumnSpacing="24">
+        <StackPanel Spacing="4">
+          <TextBlock Classes="page-title" Text="{Binding ProcessName}" TextTrimming="CharacterEllipsis" />
+          <TextBlock Classes="secondary" Text="{Binding Subtitle}" />
+        </StackPanel>
+        <StackPanel Grid.Column="1" Spacing="2" VerticalAlignment="Top" IsVisible="{Binding HasCounters}">
+          <ctl:CapsText Classes="label" Value="GC heap" HorizontalAlignment="Right" />
+          <TextBlock Classes="readout" Text="{Binding HeapText}" HorizontalAlignment="Right" />
+        </StackPanel>
+      </Grid>
+
+      <Border Classes="callout" Classes.danger="{Binding StatusIsError}" IsVisible="{Binding HasStatus}">
+        <Grid ColumnDefinitions="Auto,*" ColumnSpacing="8">
+          <ctl:Icon Classes="status" Width="16" Height="16" VerticalAlignment="Top"
+                    Data="{StaticResource IconWarning}" IsVisible="{Binding StatusIsError}" />
+          <StackPanel Grid.Column="1" Spacing="6">
+            <TextBlock Text="{Binding Status}" TextWrapping="Wrap" FontSize="{StaticResource SlTextSmall}" />
+            <Button Theme="{StaticResource LinkButton}" Command="{Binding RestartElevatedCommand}"
+                    IsVisible="{Binding OfferElevation}" HorizontalAlignment="Left">
+              <StackPanel Orientation="Horizontal" Spacing="4">
+                <ctl:Icon Width="14" Height="14" Data="{StaticResource IconShield}" />
+                <TextBlock Text="Restart as administrator" FontSize="{StaticResource SlTextSmall}" VerticalAlignment="Center" />
+              </StackPanel>
+            </Button>
+          </StackPanel>
+        </Grid>
+      </Border>
+    </StackPanel>
+
+    <!-- ========== Counters ========== -->
+    <Grid Grid.Row="1" ColumnDefinitions="2*,*,*" ColumnSpacing="16" Margin="0,0,0,16" IsVisible="{Binding HasCounters}">
+      <Border Classes="card">
+        <ctl:GraphFrame Caption="GC heap over 60 seconds" Scale="{Binding HeapScale}" MinHeight="150">
+          <ctl:HistoryGraph Series="{Binding Heap}" Maximum="{Binding HeapMaximum}" Stroke="{StaticResource SlSeries3}" />
+        </ctl:GraphFrame>
+      </Border>
+      <Border Grid.Column="1" Classes="card">
+        <StackPanel Spacing="6">
+          <ctl:CapsText Classes="label" Value="Generations" />
+          <ItemsControl ItemsSource="{Binding Generations}" ItemTemplate="{StaticResource CounterTemplate}" />
+          <TextBlock Classes="caption" TextWrapping="Wrap" Text="As of the last collection." />
+        </StackPanel>
+      </Border>
+      <Border Grid.Column="2" Classes="card">
+        <StackPanel Spacing="6">
+          <ctl:CapsText Classes="label" Value="Collector" />
+          <ItemsControl ItemsSource="{Binding Collector}" ItemTemplate="{StaticResource CounterTemplate}" />
+          <TextBlock Classes="caption" TextWrapping="Wrap" Text="Collections and pauses count from when the process was selected. A gen 2 collection counts as gen 1 and 0 too." />
+        </StackPanel>
+      </Border>
+    </Grid>
+
+    <!-- ========== Heap by type ========== -->
+    <Border Grid.Row="2" Classes="card" Padding="0" ClipToBounds="True" IsVisible="{Binding HasCounters}">
+      <Grid RowDefinitions="Auto,Auto,Auto,*">
+        <Grid Margin="24,16" ColumnDefinitions="*,Auto,Auto" ColumnSpacing="12">
+          <StackPanel Spacing="2" VerticalAlignment="Center">
+            <ctl:CapsText Classes="label" Value="Heap by type" />
+            <TextBlock Classes="caption" TextWrapping="Wrap" Text="{Binding SnapshotSummary}" IsVisible="{Binding HasSnapshot}" />
+            <TextBlock Classes="caption" TextWrapping="Wrap" IsVisible="{Binding !HasSnapshot}"
+                       Text="A snapshot runs a full collection and pauses the process while the heap is walked: a moment for most, seconds for a heap of many gigabytes." />
+          </StackPanel>
+          <TextBox Grid.Column="1" Width="240" VerticalContentAlignment="Center" IsVisible="{Binding HasSnapshot}"
+                   Text="{Binding HeapFilter}" PlaceholderText="Filter by type name"
+                   AutomationProperties.Name="Filter types">
+            <TextBox.InnerLeftContent>
+              <ctl:Icon Width="16" Height="16" Margin="10,0,0,0" Foreground="{StaticResource SlTextSecondary}"
+                        Data="{StaticResource IconSearch}" />
+            </TextBox.InnerLeftContent>
+            <TextBox.InnerRightContent>
+              <Button Theme="{StaticResource IconButton}" Margin="0,0,4,0" IsVisible="{Binding HasHeapFilter}"
+                      Command="{Binding ClearHeapFilterCommand}" AutomationProperties.Name="Clear filter">
+                <ctl:Icon Width="14" Height="14" Data="{StaticResource IconClose}" />
+              </Button>
+            </TextBox.InnerRightContent>
+          </TextBox>
+          <Button Grid.Column="2" Theme="{StaticResource SoftButton}" Command="{Binding SnapshotCommand}"
+                  IsEnabled="{Binding !IsSnapshotting}" VerticalAlignment="Center"
+                  ToolTip.Tip="Run a full garbage collection and list every live object by type">
+            <StackPanel Orientation="Horizontal" Spacing="6">
+              <ctl:Icon Width="14" Height="14" Data="{StaticResource IconMemory}" />
+              <TextBlock Text="Snapshot heap" VerticalAlignment="Center" />
+            </StackPanel>
+          </Button>
+        </Grid>
+
+        <Border Grid.Row="1" Classes="callout" Classes.danger="{Binding SnapshotIsError}" Margin="24,0,24,16"
+                IsVisible="{Binding HasSnapshotStatus}">
+          <Grid ColumnDefinitions="Auto,*" ColumnSpacing="8">
+            <ctl:Icon Classes="status" Width="16" Height="16" VerticalAlignment="Top"
+                      Data="{StaticResource IconWarning}" IsVisible="{Binding SnapshotIsError}" />
+            <TextBlock Grid.Column="1" Text="{Binding SnapshotStatus}" TextWrapping="Wrap" FontSize="{StaticResource SlTextSmall}" />
+          </Grid>
+        </Border>
+
+        <!-- Sizes sort largest first; share is of the heap's own bytes. -->
+        <Border Grid.Row="2" Classes="table-header" BorderThickness="0,1" IsVisible="{Binding HasSnapshot}">
+          <Grid ColumnDefinitions="*,110,110,110,64" ColumnSpacing="16">
+            <TextBlock Text="{Binding HeapCountText}" VerticalAlignment="Center" />
+            <Button Grid.Column="1" Theme="{StaticResource SortHeader}" HorizontalAlignment="Right"
+                    Classes.active="{Binding IsSortedByCount}" Command="{Binding SortByCountCommand}"
+                    AutomationProperties.Name="Sort by objects">
+              <StackPanel Orientation="Horizontal" Spacing="4">
+                <TextBlock Text="Objects" />
+                <ctl:Icon Width="12" Height="12" VerticalAlignment="Center" Data="{StaticResource IconChevronDown}"
+                          IsVisible="{Binding IsSortedByCount}" />
+              </StackPanel>
+            </Button>
+            <Button Grid.Column="2" Theme="{StaticResource SortHeader}" HorizontalAlignment="Right"
+                    Classes.active="{Binding IsSortedByBytes}" Command="{Binding SortByBytesCommand}"
+                    AutomationProperties.Name="Sort by own size" ToolTip.Tip="The bytes of the objects themselves">
+              <StackPanel Orientation="Horizontal" Spacing="4">
+                <TextBlock Text="Own size" />
+                <ctl:Icon Width="12" Height="12" VerticalAlignment="Center" Data="{StaticResource IconChevronDown}"
+                          IsVisible="{Binding IsSortedByBytes}" />
+              </StackPanel>
+            </Button>
+            <Button Grid.Column="3" Theme="{StaticResource SortHeader}" HorizontalAlignment="Right"
+                    Classes.active="{Binding IsSortedByRetained}" Command="{Binding SortByRetainedCommand}"
+                    IsEnabled="{Binding HasRetained}" AutomationProperties.Name="Sort by retained size"
+                    ToolTip.Tip="What the objects keep alive: what a collection could free if they were gone">
+              <StackPanel Orientation="Horizontal" Spacing="4">
+                <TextBlock Text="Retained" />
+                <ctl:Icon Width="12" Height="12" VerticalAlignment="Center" Data="{StaticResource IconChevronDown}"
+                          IsVisible="{Binding IsSortedByRetained}" />
+              </StackPanel>
+            </Button>
+            <TextBlock Grid.Column="4" Text="Share" HorizontalAlignment="Right" VerticalAlignment="Center" />
+          </Grid>
+        </Border>
+
+        <ItemsControl Grid.Row="3" ItemsSource="{Binding HeapTypes}" AutomationProperties.Name="Heap by type"
+                      IsVisible="{Binding HasSnapshot}">
+          <ItemsControl.Template>
+            <ControlTemplate>
+              <ScrollViewer HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
+                <ItemsPresenter Name="PART_ItemsPresenter" ItemsPanel="{TemplateBinding ItemsPanel}" />
+              </ScrollViewer>
+            </ControlTemplate>
+          </ItemsControl.Template>
+          <ItemsControl.ItemsPanel>
+            <ItemsPanelTemplate>
+              <VirtualizingStackPanel />
+            </ItemsPanelTemplate>
+          </ItemsControl.ItemsPanel>
+          <ItemsControl.ItemTemplate>
+            <DataTemplate x:DataType="dotnet:HeapType">
+              <Border Padding="24,8" BorderBrush="{StaticResource SlBorderFaint}" BorderThickness="0,0,0,1">
+                <Grid ColumnDefinitions="*,110,110,110,64" ColumnSpacing="16">
+                  <SelectableTextBlock FontFamily="{StaticResource SlFontMono}" FontSize="{StaticResource SlTextSmall}" VerticalAlignment="Center"
+                                       Text="{Binding Name}" TextTrimming="CharacterEllipsis" ToolTip.Tip="{Binding FullName}"
+                                       SelectionBrush="{StaticResource SlAccentTint30}" />
+                  <TextBlock Grid.Column="1" Classes="cell" Text="{Binding CountText}" />
+                  <TextBlock Grid.Column="2" Classes="cell" Text="{Binding BytesText}" />
+                  <TextBlock Grid.Column="3" Classes="cell" Text="{Binding RetainedText}" />
+                  <TextBlock Grid.Column="4" Classes="cell" Text="{Binding ShareText}" />
+                </Grid>
+              </Border>
+            </DataTemplate>
+          </ItemsControl.ItemTemplate>
+        </ItemsControl>
+
+        <TextBlock Grid.Row="3" Classes="caption" Margin="24" HorizontalAlignment="Center" VerticalAlignment="Top"
+                   Text="No type matches the filter." IsVisible="{Binding HasNoMatches}" />
+      </Grid>
+    </Border>
+  </Grid>
+</UserControl>
