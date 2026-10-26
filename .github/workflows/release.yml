@@ -1,0 +1,46 @@
+name: Release
+
+# Push a year.month.rev tag such as 2026.10.1 to publish a release: the Native AOT build is zipped
+# and attached to a GitHub release with generated notes. Tags with a hyphen (2026.10.1-beta) are
+# marked prerelease.
+
+on:
+  push:
+    tags:
+      - '[0-9][0-9][0-9][0-9].[0-9]+.[0-9]+'
+      - '[0-9][0-9][0-9][0-9].[0-9]+.[0-9]+-*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: windows-latest
+    env:
+      VERSION: ${{ github.ref_name }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Publish (Native AOT)
+        run: dotnet publish src/SocklessTaskManager -c Release -r win-x64 -o artifacts/publish -p:Version=${{ env.VERSION }}
+
+      - name: Zip
+        shell: pwsh
+        run: |
+          $zip = "artifacts/SocklessTaskManager-$env:VERSION-win-x64.zip"
+          Compress-Archive -Path artifacts/publish/* -DestinationPath $zip
+          (Get-FileHash $zip -Algorithm SHA256).Hash.ToLower() + "  " + (Split-Path $zip -Leaf) |
+            Out-File "$zip.sha256" -Encoding ascii
+
+      - name: Create release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $flags = @('--generate-notes', '--title', "Sockless Task Manager $env:VERSION")
+          if ($env:VERSION.Contains('-')) { $flags += '--prerelease' }
+          gh release create $env:VERSION artifacts/*.zip artifacts/*.sha256 @flags

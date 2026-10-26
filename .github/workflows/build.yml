@@ -1,0 +1,32 @@
+name: Build
+
+# Publishes with Native AOT on every push and pull request: trim/AOT warnings are errors
+# (Directory.Build.props), so a change that breaks AOT fails here.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Publish (Native AOT)
+        run: dotnet publish src/SocklessTaskManager -c Release -r win-x64 -o artifacts/publish
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: SocklessTaskManager-win-x64
+          path: artifacts/publish
+          retention-days: 14

@@ -59,6 +59,19 @@ dotnet run --project src/SocklessTaskManager
 dotnet publish src/SocklessTaskManager -c Release -r win-x64 -o artifacts/publish
 ```
 
+## Releases
+
+Compiled builds are on the [Releases](https://github.com/sockless-coding/sockless-task-manager/releases) page: unzip and run `SocklessTaskManager.exe`.
+
+To make a release, push a year.month.rev tag (no `v` prefix), where rev counts releases within the month. The release workflow publishes with Native AOT, zips the output and attaches it to a GitHub release with generated notes. A tag with a hyphen is marked as a prerelease.
+
+```
+git tag 2026.10.1
+git push origin 2026.10.1
+```
+
+Every push and pull request also runs the same AOT publish, so a change that breaks Native AOT fails the build.
+
 ## Project layout
 
 The code is organised in vertical slices: each feature, and each device kind inside Performance, keeps its native calls, sensor, view model and view together. [AGENTS.md](AGENTS.md) describes the structure, the Native AOT rules and how to add a feature or device kind.
