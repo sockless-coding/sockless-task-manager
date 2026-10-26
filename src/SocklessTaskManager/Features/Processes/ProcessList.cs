@@ -320,8 +320,11 @@ public sealed class ProcessList : ObservableObject, IDisposable
         get => _details;
         private set
         {
+            var previous = _details;
             if (Set(ref _details, value))
             {
+                previous?.Watch(false);
+                value?.Watch(_isShown);
                 OnPropertyChanged(nameof(HasDetails));
                 MarkSelection();
             }
@@ -353,6 +356,7 @@ public sealed class ProcessList : ObservableObject, IDisposable
                 return;
 
             _isShown = value;
+            _details?.Watch(value);
             if (value)
                 SampleNow();
         }
@@ -400,7 +404,11 @@ public sealed class ProcessList : ObservableObject, IDisposable
             EndedChanged();
     }
 
-    public void Dispose() => _trace?.Dispose();
+    public void Dispose()
+    {
+        _trace?.Dispose();
+        _details?.Watch(false);
+    }
 
     /// <summary>Samples off the clock so the page fills in at once rather than on the next tick.</summary>
     private void SampleNow() => Task.Run(() =>

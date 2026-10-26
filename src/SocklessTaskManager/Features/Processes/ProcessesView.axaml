@@ -11,6 +11,7 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:ctl="using:Sockless.TaskManager.Controls"
              xmlns:proc="using:Sockless.TaskManager.Features.Processes"
+             xmlns:dotnet="using:Sockless.TaskManager.Features.Processes.Dotnet"
              x:Class="Sockless.TaskManager.Features.Processes.ProcessesView"
              x:DataType="proc:ProcessList">
 
@@ -55,6 +56,117 @@
       <Setter Property="IsEnabled" Value="{Binding CanHide}" />
       <Setter Property="StaysOpenOnClick" Value="True" />
     </ControlTheme>
+
+    <!-- A label and value in the details pane (proc:Fact). -->
+    <DataTemplate x:Key="FactTemplate" x:DataType="proc:Fact">
+      <Panel>
+        <!-- Long values: label and copy button above, the value at full width below. -->
+        <StackPanel Spacing="2" Margin="0,3,0,6" IsVisible="{Binding IsLong}">
+          <Grid ColumnDefinitions="*,Auto">
+            <TextBlock Classes="caption" Text="{Binding Label}" VerticalAlignment="Center" />
+            <Button Grid.Column="1" Theme="{StaticResource IconButton}" Padding="2"
+                    Command="{Binding CopyCommand}" IsVisible="{Binding CanCopy}"
+                    AutomationProperties.Name="{Binding CopyName}" ToolTip.Tip="{Binding CopyName}">
+              <ctl:Icon Width="14" Height="14" Data="{StaticResource IconCopy}" />
+            </Button>
+          </Grid>
+          <SelectableTextBlock Text="{Binding Value}" TextWrapping="Wrap"
+                               FontFamily="{StaticResource SlFontMono}" FontSize="{StaticResource SlTextSmall}"
+                               SelectionBrush="{StaticResource SlAccentTint30}" />
+        </StackPanel>
+        <Grid ColumnDefinitions="96,*" ColumnSpacing="8" Margin="0,3" IsVisible="{Binding IsShort}">
+          <TextBlock Classes="caption" Text="{Binding Label}" />
+          <SelectableTextBlock Grid.Column="1" Text="{Binding Value}" TextWrapping="Wrap"
+                               FontFamily="{StaticResource SlFontMono}" FontSize="{StaticResource SlTextSmall}"
+                               SelectionBrush="{StaticResource SlAccentTint30}" IsVisible="{Binding IsText}" />
+          <Button Grid.Column="1" Theme="{StaticResource LinkButton}" HorizontalAlignment="Left"
+                  Command="{Binding OpenCommand}" IsVisible="{Binding IsLink}" ToolTip.Tip="Show this process">
+            <TextBlock Classes="mono" FontSize="{StaticResource SlTextSmall}" Text="{Binding Value}" TextWrapping="Wrap" />
+          </Button>
+        </Grid>
+      </Panel>
+    </DataTemplate>
+
+    <!--
+      The .NET section of the details pane (dotnet:ManagedMemory): GC heap over time, then where
+      it is by generation. Hidden unless the process has a .NET diagnostics port.
+    -->
+    <DataTemplate x:Key="ManagedMemoryTemplate" x:DataType="dotnet:ManagedMemory">
+      <StackPanel Spacing="6" IsVisible="{Binding IsPresent}">
+        <ctl:CapsText Classes="label" Value=".NET memory" />
+
+        <Border Classes="callout" Classes.danger="{Binding StatusIsError}" IsVisible="{Binding HasStatus}">
+          <Grid ColumnDefinitions="Auto,*" ColumnSpacing="8">
+            <ctl:Icon Classes="status" Width="16" Height="16" VerticalAlignment="Top"
+                      Data="{StaticResource IconWarning}" IsVisible="{Binding StatusIsError}" />
+            <StackPanel Grid.Column="1" Spacing="6">
+              <TextBlock Text="{Binding Status}" TextWrapping="Wrap" FontSize="{StaticResource SlTextSmall}" />
+              <Button Theme="{StaticResource LinkButton}" Command="{Binding RestartElevatedCommand}"
+                      IsVisible="{Binding OfferElevation}" HorizontalAlignment="Left">
+                <StackPanel Orientation="Horizontal" Spacing="4">
+                  <ctl:Icon Width="14" Height="14" Data="{StaticResource IconShield}" />
+                  <TextBlock Text="Restart as administrator" FontSize="{StaticResource SlTextSmall}" VerticalAlignment="Center" />
+                </StackPanel>
+              </Button>
+            </StackPanel>
+          </Grid>
+        </Border>
+
+        <StackPanel Spacing="4" Margin="0,2,0,4" IsVisible="{Binding HasCounters}">
+          <Grid ColumnDefinitions="*,Auto">
+            <TextBlock Classes="caption" Text="GC heap" VerticalAlignment="Center" />
+            <TextBlock Grid.Column="1" Classes="number" Text="{Binding HeapText}" />
+          </Grid>
+          <ctl:HistoryGraph Height="48" GridDivisions="4" Series="{Binding Heap}"
+                            Maximum="{Binding HeapMaximum}" Stroke="{StaticResource SlSeries3}" />
+        </StackPanel>
+
+        <ItemsControl ItemsSource="{Binding Facts}" ItemTemplate="{StaticResource FactTemplate}" IsVisible="{Binding HasCounters}" />
+        <TextBlock Classes="caption" TextWrapping="Wrap" IsVisible="{Binding HasCounters}"
+                   Text="From the runtime's counters. Generation sizes are as of the last collection; collections and pauses count from when this pane opened." />
+
+        <!-- What's on the heap, by type: only when asked, since it pauses the process. -->
+        <StackPanel Spacing="8" Margin="0,14,0,0" IsVisible="{Binding HasCounters}">
+          <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+            <ctl:CapsText Classes="label" Value="Heap by type" VerticalAlignment="Center" />
+            <Button Grid.Column="1" Theme="{StaticResource SoftButton}" Command="{Binding SnapshotCommand}"
+                    IsEnabled="{Binding !IsSnapshotting}"
+                    ToolTip.Tip="Run a full garbage collection and list every live object by type">
+              <StackPanel Orientation="Horizontal" Spacing="6">
+                <ctl:Icon Width="14" Height="14" Data="{StaticResource IconMemory}" />
+                <TextBlock Text="Snapshot heap" VerticalAlignment="Center" />
+              </StackPanel>
+            </Button>
+          </Grid>
+          <TextBlock Classes="caption" TextWrapping="Wrap" IsVisible="{Binding !HasSnapshot}"
+                     Text="A snapshot runs a full collection and pauses the process while the heap is walked: a moment for most, seconds for a heap of many gigabytes." />
+
+          <Border Classes="callout" Classes.danger="{Binding SnapshotIsError}" IsVisible="{Binding HasSnapshotStatus}">
+            <Grid ColumnDefinitions="Auto,*" ColumnSpacing="8">
+              <ctl:Icon Classes="status" Width="16" Height="16" VerticalAlignment="Top"
+                        Data="{StaticResource IconWarning}" IsVisible="{Binding SnapshotIsError}" />
+              <TextBlock Grid.Column="1" Text="{Binding SnapshotStatus}" TextWrapping="Wrap" FontSize="{StaticResource SlTextSmall}" />
+            </Grid>
+          </Border>
+
+          <StackPanel Spacing="4" IsVisible="{Binding HasSnapshot}">
+            <TextBlock Classes="caption" TextWrapping="Wrap" Text="{Binding SnapshotSummary}" />
+            <ItemsControl ItemsSource="{Binding HeapTypes}">
+              <ItemsControl.ItemTemplate>
+                <DataTemplate x:DataType="dotnet:HeapType">
+                  <Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto" ColumnSpacing="8" Margin="0,3">
+                    <TextBlock Classes="mono" FontSize="{StaticResource SlTextSmall}" Text="{Binding Name}"
+                               TextTrimming="CharacterEllipsis" ToolTip.Tip="{Binding FullName}" />
+                    <TextBlock Grid.Column="1" Classes="number" Text="{Binding SizeText}" />
+                    <TextBlock Grid.Row="1" Grid.ColumnSpan="2" Classes="caption" Text="{Binding Detail}" />
+                  </Grid>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+          </StackPanel>
+        </StackPanel>
+      </StackPanel>
+    </DataTemplate>
 
     <!-- The details pane (proc:ProcessDetails). -->
     <DataTemplate x:Key="DetailsTemplate" x:DataType="proc:ProcessDetails">
@@ -161,39 +273,11 @@
 
               <StackPanel Spacing="6">
                 <ctl:CapsText Classes="label" Value="Details" />
-                <ItemsControl ItemsSource="{Binding Facts}">
-                  <ItemsControl.ItemTemplate>
-                    <DataTemplate x:DataType="proc:Fact">
-                      <Panel>
-                        <!-- Long values: label and copy button above, the value at full width below. -->
-                        <StackPanel Spacing="2" Margin="0,3,0,6" IsVisible="{Binding IsLong}">
-                          <Grid ColumnDefinitions="*,Auto">
-                            <TextBlock Classes="caption" Text="{Binding Label}" VerticalAlignment="Center" />
-                            <Button Grid.Column="1" Theme="{StaticResource IconButton}" Padding="2"
-                                    Command="{Binding CopyCommand}" IsVisible="{Binding CanCopy}"
-                                    AutomationProperties.Name="{Binding CopyName}" ToolTip.Tip="{Binding CopyName}">
-                              <ctl:Icon Width="14" Height="14" Data="{StaticResource IconCopy}" />
-                            </Button>
-                          </Grid>
-                          <SelectableTextBlock Text="{Binding Value}" TextWrapping="Wrap"
-                                               FontFamily="{StaticResource SlFontMono}" FontSize="{StaticResource SlTextSmall}"
-                                               SelectionBrush="{StaticResource SlAccentTint30}" />
-                        </StackPanel>
-                        <Grid ColumnDefinitions="96,*" ColumnSpacing="8" Margin="0,3" IsVisible="{Binding IsShort}">
-                          <TextBlock Classes="caption" Text="{Binding Label}" />
-                          <SelectableTextBlock Grid.Column="1" Text="{Binding Value}" TextWrapping="Wrap"
-                                               FontFamily="{StaticResource SlFontMono}" FontSize="{StaticResource SlTextSmall}"
-                                               SelectionBrush="{StaticResource SlAccentTint30}" IsVisible="{Binding IsText}" />
-                          <Button Grid.Column="1" Theme="{StaticResource LinkButton}" HorizontalAlignment="Left"
-                                  Command="{Binding OpenCommand}" IsVisible="{Binding IsLink}" ToolTip.Tip="Show this process">
-                            <TextBlock Classes="mono" FontSize="{StaticResource SlTextSmall}" Text="{Binding Value}" TextWrapping="Wrap" />
-                          </Button>
-                        </Grid>
-                      </Panel>
-                    </DataTemplate>
-                  </ItemsControl.ItemTemplate>
-                </ItemsControl>
+                <ItemsControl ItemsSource="{Binding Facts}" ItemTemplate="{StaticResource FactTemplate}" />
               </StackPanel>
+
+              <!-- The .NET runtime's own GC counters, for a .NET process. -->
+              <ContentControl Content="{Binding Managed}" ContentTemplate="{StaticResource ManagedMemoryTemplate}" />
 
               <!-- Changing how it runs. Only while it runs. -->
               <StackPanel Spacing="10" IsVisible="{Binding IsAlive}">

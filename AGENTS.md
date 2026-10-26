@@ -31,6 +31,8 @@ src/SocklessTaskManager/
     Processes/          a top-level feature: process list and tree, search, filters, followed processes,
                         details and actions (end, suspend, priority, affinity), ended processes (ETW when elevated),
                         a column chooser and column filters (TableColumn.cs, ColumnFilter.cs)
+      Dotnet/           .NET processes: GC counters and a heap-by-type snapshot, over the diagnostics IPC pipe
+                        and a hand-written nettrace reader that keeps Native AOT green (TraceEvent relies on reflection)
     Performance/        a top-level feature (one sidebar entry)
       PerformanceModule.cs   the list of device scanners for this feature
       Cpu/ Memory/ Disk/ Network/ Gpu/   one sub-slice per device kind

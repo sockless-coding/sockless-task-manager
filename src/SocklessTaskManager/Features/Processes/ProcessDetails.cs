@@ -4,6 +4,7 @@ using System.Numerics;
 using System.Windows.Input;
 using Avalonia.Media;
 using Sockless.TaskManager.Core;
+using Sockless.TaskManager.Features.Processes.Dotnet;
 
 namespace Sockless.TaskManager.Features.Processes;
 
@@ -123,6 +124,7 @@ public sealed class ProcessDetails : ObservableObject
     private readonly Fact? _commit;
     private readonly Fact? _io;
     private ProcessFactsReading? _facts;
+    private ManagedMemory? _managed;
     private EndedProcess? _ended;
     private string? _parent;
     private ProcessKey? _parentKey;
@@ -155,6 +157,7 @@ public sealed class ProcessDetails : ObservableObject
         _workingSet = new Fact("Working set", string.Empty);
         _commit = new Fact("Commit", string.Empty);
         _io = new Fact("I/O so far", string.Empty);
+        _managed = new ManagedMemory(reading.Key.Id);
 
         Update(reading);
         RebuildFacts();
@@ -207,6 +210,13 @@ public sealed class ProcessDetails : ObservableObject
     public bool HasSubtitle => !string.IsNullOrEmpty(Subtitle);
 
     public ObservableCollection<Fact> Facts { get; } = [];
+
+    /// <summary>The .NET runtime's GC counters, while a .NET process runs.</summary>
+    public ManagedMemory? Managed
+    {
+        get => _managed;
+        private set => Set(ref _managed, value);
+    }
 
     /// <summary>Share of all logical processors, 0–100, since the process was selected.</summary>
     public History Cpu { get; } = new();
@@ -383,6 +393,16 @@ public sealed class ProcessDetails : ObservableObject
         _workingSet!.Value = Format.Bytes(reading.WorkingSet);
         _commit!.Value = Format.Bytes(reading.Commit);
         _io!.Value = Format.Bytes(reading.IoBytes);
+        _managed?.Apply();
+    }
+
+    /// <summary>Streams the .NET counters while the pane is on screen, so nothing runs in the process otherwise.</summary>
+    internal void Watch(bool watch)
+    {
+        if (watch && _isAlive)
+            _managed?.Start();
+        else
+            _managed?.Stop();
     }
 
     /// <summary>The process ended. The graphs freeze; <paramref name="ended"/> adds the exit, once it's known.</summary>
@@ -392,6 +412,8 @@ public sealed class ProcessDetails : ObservableObject
         IsAlive = false;
         CpuText = "—";
         IsEditingAffinity = false;
+        _managed?.Stop();
+        Managed = null;
 
         if (ended is not null && !ReferenceEquals(ended, _ended))
             _ended = ended;
