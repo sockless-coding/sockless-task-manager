@@ -1,14 +1,18 @@
 name: Release
 
-# Push a year.month.rev tag such as 2026.10.1 to publish a release: the Native AOT build is zipped
-# and attached to a GitHub release with generated notes. Tags with a hyphen (2026.10.1-beta) are
-# marked prerelease.
+# Create a release on GitHub with a year.month.rev tag such as 2026.10.1 (no v prefix): the new tag
+# runs this workflow, which publishes with Native AOT and attaches the zip and its .sha256 to that
+# release. Pushing a tag without a release, or running the workflow by hand, creates the release.
+# The asset names must match Features/Updates/ReleaseFeed.cs.
 
 on:
   push:
-    tags:
-      - '[0-9][0-9][0-9][0-9].[0-9]+.[0-9]+'
-      - '[0-9][0-9][0-9][0-9].[0-9]+.[0-9]+-*'
+    tags: ['[0-9]*.[0-9]*.[0-9]*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release tag to create (e.g. 2026.10.1)'
+        required: true
 
 permissions:
   contents: write
@@ -16,31 +20,44 @@ permissions:
 jobs:
   release:
     runs-on: windows-latest
-    env:
-      VERSION: ${{ github.ref_name }}
+
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-dotnet@v4
+      - uses: actions/setup-dotnet@v6
         with:
-          dotnet-version: 10.0.x
+          dotnet-version: '10.0.x'
 
-      - name: Publish (Native AOT)
-        run: dotnet publish src/SocklessTaskManager -c Release -r win-x64 -o artifacts/publish -p:Version=${{ env.VERSION }}
-
-      - name: Zip
+      - name: Resolve version
+        id: version
         shell: pwsh
         run: |
-          $zip = "artifacts/SocklessTaskManager-$env:VERSION-win-x64.zip"
-          Compress-Archive -Path artifacts/publish/* -DestinationPath $zip
+          $tag = if ('${{ github.event.inputs.tag }}') { '${{ github.event.inputs.tag }}' } else { '${{ github.ref_name }}' }
+          "tag=$tag" | Out-File $env:GITHUB_OUTPUT -Append
+          Write-Host "Releasing $tag"
+
+      - name: Publish (Native AOT, win-x64)
+        run: >
+          dotnet publish src/SocklessTaskManager -c Release -r win-x64
+          -o artifacts/publish
+          -p:Version=${{ steps.version.outputs.tag }}
+
+      - name: Package release archive
+        shell: pwsh
+        run: |
+          $zip = "artifacts/SocklessTaskManager-${{ steps.version.outputs.tag }}-win-x64.zip"
+          Compress-Archive artifacts/publish/* $zip
           (Get-FileHash $zip -Algorithm SHA256).Hash.ToLower() + "  " + (Split-Path $zip -Leaf) |
             Out-File "$zip.sha256" -Encoding ascii
 
-      - name: Create release
-        shell: pwsh
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          $flags = @('--generate-notes', '--title', "Sockless Task Manager $env:VERSION")
-          if ($env:VERSION.Contains('-')) { $flags += '--prerelease' }
-          gh release create $env:VERSION artifacts/*.zip artifacts/*.sha256 @flags
+      # Adds the files to the release if it exists and keeps its title, notes, draft and
+      # prerelease state; otherwise creates it. A tag with a hyphen is always a prerelease.
+      - name: Upload to GitHub release
+        uses: softprops/action-gh-release@v3
+        with:
+          tag_name: ${{ steps.version.outputs.tag }}
+          generate_release_notes: true
+          prerelease: ${{ contains(steps.version.outputs.tag, '-') && 'true' || '' }}
+          files: |
+            artifacts/SocklessTaskManager-*.zip
+            artifacts/SocklessTaskManager-*.zip.sha256

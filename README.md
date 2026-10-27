@@ -65,7 +65,7 @@ Compiled builds are on the [Releases](https://github.com/sockless-coding/sockles
 
 A release build checks for a newer release shortly after it starts and twice a day after that. When it finds one, an update button appears in the top bar: it downloads the zip, checks its SHA-256, replaces the files and restarts. If the app's folder can't be written to (Program Files without administrator rights), the button opens the release page instead. Builds made locally are version 0.0.0 and never check.
 
-To make a release, push a year.month.rev tag (no `v` prefix), where rev counts releases within the month. The release workflow publishes with Native AOT, zips the output and attaches it to a GitHub release with generated notes. A tag with a hyphen is marked as a prerelease.
+To make a release, create one on GitHub with a new year.month.rev tag (no `v` prefix), where rev counts releases within the month. The new tag runs the release workflow, which publishes with Native AOT, zips the output and attaches the zip and its `.sha256` to the release. A tag with a hyphen is marked as a prerelease. Pushing a tag on its own, or running the workflow by hand with a tag, creates the release with generated notes:
 
 ```
 git tag 2026.10.1
