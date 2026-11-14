@@ -1,6 +1,6 @@
 # Sockless Task Manager
 
-A lightweight alternative to the Windows Task Manager, in the Sockless Workshop theme. Built with .NET 10 and Avalonia, published as a single Native AOT executable.
+A lightweight alternative to the Windows Task Manager, in the Sockless Workshop theme. Built with .NET 11 and Avalonia, published as a single Native AOT executable.
 
 ## What it does
 
@@ -50,7 +50,7 @@ The UI uses Avalonia's software renderer. Its GPU renderer loads ANGLE and the g
 ## Requirements
 
 - Windows 10 or 11, x64.
-- To build: .NET 10 SDK. To publish with Native AOT: Visual Studio C++ build tools.
+- To build: .NET 11 SDK. To publish with Native AOT: Visual Studio C++ build tools.
 
 ## Build
 

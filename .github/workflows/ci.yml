@@ -26,7 +26,7 @@ jobs:
 
       - uses: actions/setup-dotnet@v6
         with:
-          dotnet-version: '10.0.x'
+          dotnet-version: '11.0.x'
 
       - name: Publish (Native AOT, win-x64)
         run: dotnet publish src/SocklessTaskManager -c Release -r win-x64 -o artifacts/publish

@@ -1,6 +1,6 @@
 # Agent instructions
 
-Sockless Task Manager is a lightweight Windows Task Manager alternative: .NET 10, Avalonia 12, published with Native AOT. Read this before changing code.
+Sockless Task Manager is a lightweight Windows Task Manager alternative: .NET 11 (C# 15), Avalonia 12, published with Native AOT. Read this before changing code.
 
 ## Non-negotiables
 
