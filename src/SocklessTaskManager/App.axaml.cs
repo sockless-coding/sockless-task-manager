@@ -6,6 +6,7 @@ using Sockless.TaskManager.Features.Memory;
 using Sockless.TaskManager.Features.Network;
 using Sockless.TaskManager.Features.Performance;
 using Sockless.TaskManager.Features.Processes;
+using Sockless.TaskManager.Features.Services;
 using Sockless.TaskManager.Features.Storage;
 using Sockless.TaskManager.Features.Updates;
 using Sockless.TaskManager.Features.Users;
@@ -34,6 +35,7 @@ public sealed class App : Application
                 new StorageFeature(clock),
                 new NetworkFeature(clock, navigator),
                 new UsersFeature(clock, navigator),
+                new ServicesFeature(clock, navigator),
             ];
 
             var shell = new ShellViewModel(clock, navigator, features, new Updater());

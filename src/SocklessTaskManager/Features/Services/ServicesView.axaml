@@ -1,0 +1,488 @@
+<!--
+  Services page: title and counts, a toolbar (state, search, drivers, grouped or list), a callout for
+  what needs administrator rights, then the table with the selected service's details beside it.
+  Grouped, each publisher has a heading row that folds its services away. Narrow windows show the
+  details over the table instead (code-behind). Stopping with dependents and uninstalling ask
+  first, in a dialog over the page.
+-->
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:ctl="using:Sockless.TaskManager.Controls"
+             xmlns:svc="using:Sockless.TaskManager.Features.Services"
+             x:Class="Sockless.TaskManager.Features.Services.ServicesView"
+             x:DataType="svc:ServiceList">
+
+  <UserControl.Resources>
+    <!-- Column title, plus a direction chevron on the sort column. -->
+    <DataTemplate x:Key="SortHeaderTemplate" x:DataType="svc:ServiceColumn">
+      <Button Theme="{StaticResource SortHeader}" Classes.active="{Binding IsActive}" HorizontalAlignment="{Binding Alignment}"
+              Command="{Binding SortCommand}" AutomationProperties.Name="{Binding AccessibleName}">
+        <StackPanel Orientation="Horizontal" Spacing="4">
+          <TextBlock Text="{Binding Title}" />
+          <ctl:Icon Width="12" Height="12" VerticalAlignment="Center" Data="{Binding Glyph}" IsVisible="{Binding IsActive}" />
+        </StackPanel>
+      </Button>
+    </DataTemplate>
+
+    <!-- The edit form (svc:ServiceEditor): labels above fields, only what changed is saved. -->
+    <DataTemplate x:Key="EditorTemplate" x:DataType="svc:ServiceEditor">
+      <StackPanel Spacing="14">
+        <StackPanel Spacing="4">
+          <TextBlock Classes="caption" Text="Display name" />
+          <TextBox Text="{Binding DisplayName}" AutomationProperties.Name="Display name" />
+        </StackPanel>
+
+        <StackPanel Spacing="4">
+          <TextBlock Classes="caption" Text="Description" />
+          <TextBox Text="{Binding Description}" AcceptsReturn="True" TextWrapping="Wrap" MinHeight="120"
+                   VerticalContentAlignment="Top" AutomationProperties.Name="Description" />
+        </StackPanel>
+
+        <StackPanel Spacing="4">
+          <TextBlock Classes="caption" Text="Startup type" />
+          <ComboBox HorizontalAlignment="Stretch" ItemsSource="{Binding StartOptions}" SelectedItem="{Binding Start}"
+                    AutomationProperties.Name="Startup type">
+            <ComboBox.ItemTemplate>
+              <DataTemplate x:DataType="svc:StartOption">
+                <StackPanel Spacing="1">
+                  <TextBlock Text="{Binding Title}" />
+                  <TextBlock Classes="caption" Text="{Binding Description}" />
+                </StackPanel>
+              </DataTemplate>
+            </ComboBox.ItemTemplate>
+          </ComboBox>
+        </StackPanel>
+
+        <StackPanel Spacing="4">
+          <TextBlock Classes="caption" Text="Command line" />
+          <TextBox Text="{Binding ImagePath}" TextWrapping="Wrap" FontFamily="{StaticResource SlFontMono}"
+                   FontSize="{StaticResource SlTextSmall}" AutomationProperties.Name="Command line" />
+          <TextBlock Classes="caption" TextWrapping="Wrap"
+                     Text="Quote the program's path if it has spaces, or Windows may run something else." />
+        </StackPanel>
+
+        <StackPanel Spacing="6" IsVisible="{Binding HasAccount}">
+          <TextBlock Classes="caption" Text="Log on as" />
+          <RadioButton GroupName="ServiceAccount" Content="Local System" IsChecked="{Binding IsLocalSystem}"
+                       ToolTip.Tip="Full control of this computer" />
+          <RadioButton GroupName="ServiceAccount" Content="Local Service" IsChecked="{Binding IsLocalService}"
+                       ToolTip.Tip="A limited account; anonymous on the network" />
+          <RadioButton GroupName="ServiceAccount" Content="Network Service" IsChecked="{Binding IsNetworkService}"
+                       ToolTip.Tip="A limited account; uses this computer's identity on the network" />
+          <RadioButton GroupName="ServiceAccount" Content="This account" IsChecked="{Binding IsOtherAccount}" />
+          <StackPanel Spacing="8" Margin="28,0,0,0" IsVisible="{Binding IsOtherAccount}">
+            <TextBox Text="{Binding AccountName}" PlaceholderText="DOMAIN\user or .\user" AutomationProperties.Name="Account" />
+            <TextBox Text="{Binding Password}" PasswordChar="●" PlaceholderText="Password" AutomationProperties.Name="Password" />
+            <TextBox Text="{Binding ConfirmPassword}" PasswordChar="●" PlaceholderText="Confirm password"
+                     AutomationProperties.Name="Confirm password" />
+          </StackPanel>
+        </StackPanel>
+
+        <TextBlock Text="{Binding Error}" Foreground="{StaticResource SlDanger}" TextWrapping="Wrap"
+                   FontSize="{StaticResource SlTextSmall}" IsVisible="{Binding HasError}" />
+
+        <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Right">
+          <Button Theme="{StaticResource SoftButton}" Content="Cancel" Command="{Binding CancelCommand}" />
+          <Button Theme="{StaticResource SoftButton}" Command="{Binding SaveCommand}">
+            <StackPanel Orientation="Horizontal" Spacing="6">
+              <ctl:Icon Width="14" Height="14" Data="{StaticResource IconPencil}" />
+              <TextBlock Text="Save" VerticalAlignment="Center" />
+            </StackPanel>
+          </Button>
+        </StackPanel>
+      </StackPanel>
+    </DataTemplate>
+
+    <!-- The details pane (svc:ServiceDetails). -->
+    <DataTemplate x:Key="DetailsTemplate" x:DataType="svc:ServiceDetails">
+      <Border Classes="card" Padding="0" ClipToBounds="True">
+        <DockPanel>
+          <!-- Header: what it is, its state, and what can be done to it. -->
+          <Border DockPanel.Dock="Top" Padding="20,16" BorderBrush="{StaticResource SlBorder}" BorderThickness="0,0,0,1">
+            <StackPanel Spacing="14">
+              <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="8">
+                <StackPanel Spacing="2">
+                  <TextBlock Classes="section-title" Text="{Binding DisplayName}" TextWrapping="Wrap" />
+                  <TextBlock Classes="caption mono" Text="{Binding Name}" TextTrimming="CharacterEllipsis" />
+                </StackPanel>
+                <Border Grid.Column="1" Classes="badge" Classes.success="{Binding IsSuccess}" Classes.warning="{Binding IsWarning}"
+                        VerticalAlignment="Top">
+                  <TextBlock Text="{Binding StatusText}" />
+                </Border>
+                <Button Grid.Column="2" Theme="{StaticResource IconButton}" VerticalAlignment="Top"
+                        Command="{Binding CloseCommand}" AutomationProperties.Name="Close details" ToolTip.Tip="Close (Esc)">
+                  <ctl:Icon Width="14" Height="14" Data="{StaticResource IconClose}" />
+                </Button>
+              </Grid>
+
+              <StackPanel Spacing="10" IsEnabled="{Binding IsIdle}">
+                <WrapPanel ItemSpacing="8" LineSpacing="8">
+                  <Button Theme="{StaticResource SoftButton}" Command="{Binding StartCommand}" IsEnabled="{Binding CanStart}"
+                          IsVisible="{Binding !CanContinue}" ToolTip.Tip="Start the service">
+                    <StackPanel Orientation="Horizontal" Spacing="6">
+                      <ctl:Icon Width="14" Height="14" Data="{StaticResource IconPlay}" />
+                      <TextBlock Text="Start" VerticalAlignment="Center" />
+                    </StackPanel>
+                  </Button>
+                  <Button Theme="{StaticResource SoftButton}" Command="{Binding ContinueCommand}" IsVisible="{Binding CanContinue}"
+                          ToolTip.Tip="Let the paused service carry on">
+                    <StackPanel Orientation="Horizontal" Spacing="6">
+                      <ctl:Icon Width="14" Height="14" Data="{StaticResource IconPlay}" />
+                      <TextBlock Text="Resume" VerticalAlignment="Center" />
+                    </StackPanel>
+                  </Button>
+                  <Button Theme="{StaticResource SoftButton}" Command="{Binding StopCommand}" IsEnabled="{Binding CanStop}"
+                          ToolTip.Tip="Stop the service, and the services that need it">
+                    <StackPanel Orientation="Horizontal" Spacing="6">
+                      <ctl:Icon Width="14" Height="14" Data="{StaticResource IconStop}" />
+                      <TextBlock Text="Stop" VerticalAlignment="Center" />
+                    </StackPanel>
+                  </Button>
+                  <Button Theme="{StaticResource SoftButton}" Command="{Binding RestartCommand}" IsEnabled="{Binding CanStop}"
+                          ToolTip.Tip="Stop it and start it again">
+                    <StackPanel Orientation="Horizontal" Spacing="6">
+                      <ctl:Icon Width="14" Height="14" Data="{StaticResource IconRefresh}" />
+                      <TextBlock Text="Restart" VerticalAlignment="Center" />
+                    </StackPanel>
+                  </Button>
+                  <Button Theme="{StaticResource SoftButton}" Command="{Binding PauseCommand}" IsVisible="{Binding CanPause}"
+                          ToolTip.Tip="Pause it; it keeps running but stops working until resumed">
+                    <StackPanel Orientation="Horizontal" Spacing="6">
+                      <ctl:Icon Width="14" Height="14" Data="{StaticResource IconPause}" />
+                      <TextBlock Text="Pause" VerticalAlignment="Center" />
+                    </StackPanel>
+                  </Button>
+                  <ToggleButton Theme="{StaticResource SoftToggle}" Command="{Binding EditCommand}" IsEnabled="{Binding CanEdit}"
+                                IsChecked="{Binding IsEditing, Mode=OneWay}"
+                                ToolTip.Tip="Change its name, description, startup type, command line or account">
+                    <StackPanel Orientation="Horizontal" Spacing="6">
+                      <ctl:Icon Width="14" Height="14" Data="{StaticResource IconPencil}" />
+                      <TextBlock Text="Edit" VerticalAlignment="Center" />
+                    </StackPanel>
+                  </ToggleButton>
+                  <Button Theme="{StaticResource DangerButton}" Command="{Binding UninstallCommand}" IsEnabled="{Binding CanUninstall}"
+                          ToolTip.Tip="Remove the service from Windows">
+                    <StackPanel Orientation="Horizontal" Spacing="6">
+                      <ctl:Icon Width="14" Height="14" Data="{StaticResource IconTrash}" />
+                      <TextBlock Text="Uninstall" VerticalAlignment="Center" />
+                    </StackPanel>
+                  </Button>
+                </WrapPanel>
+
+                <StackPanel Spacing="4" IsVisible="{Binding NeedsElevation}">
+                  <TextBlock Classes="caption" TextWrapping="Wrap"
+                             Text="Most services can only be started, stopped or changed by an administrator." />
+                  <Button Theme="{StaticResource LinkButton}" Command="{Binding RestartElevatedCommand}" HorizontalAlignment="Left">
+                    <StackPanel Orientation="Horizontal" Spacing="4">
+                      <ctl:Icon Width="14" Height="14" Data="{StaticResource IconShield}" />
+                      <TextBlock Text="Restart as administrator" FontSize="{StaticResource SlTextSmall}" VerticalAlignment="Center" />
+                    </StackPanel>
+                  </Button>
+                </StackPanel>
+              </StackPanel>
+
+              <Border Classes="callout" Classes.danger="{Binding MessageIsError}" IsVisible="{Binding HasMessage}">
+                <Grid ColumnDefinitions="Auto,*" ColumnSpacing="8">
+                  <ctl:Icon Classes="status" Width="16" Height="16" VerticalAlignment="Top"
+                            Data="{StaticResource IconWarning}" IsVisible="{Binding MessageIsError}" />
+                  <TextBlock Grid.Column="1" Text="{Binding Message}" TextWrapping="Wrap" FontSize="{StaticResource SlTextSmall}" />
+                </Grid>
+              </Border>
+            </StackPanel>
+          </Border>
+
+          <ScrollViewer HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
+            <StackPanel Spacing="16" Margin="20,14,20,20">
+              <ContentControl Content="{Binding Editor}" ContentTemplate="{StaticResource EditorTemplate}"
+                              IsVisible="{Binding IsEditing}" />
+
+              <StackPanel Spacing="16" IsVisible="{Binding IsViewing}">
+                <Border Classes="callout warning" IsVisible="{Binding IsMissingProgram}">
+                  <Grid ColumnDefinitions="Auto,*" ColumnSpacing="8">
+                    <ctl:Icon Classes="status" Width="16" Height="16" VerticalAlignment="Top" Data="{StaticResource IconWarning}" />
+                    <TextBlock Grid.Column="1" TextWrapping="Wrap" FontSize="{StaticResource SlTextSmall}"
+                               Text="The program it runs isn't on disk. If what installed it is gone, the service is a leftover and can be uninstalled." />
+                  </Grid>
+                </Border>
+
+                <SelectableTextBlock Text="{Binding Description}" TextWrapping="Wrap" IsVisible="{Binding HasDescription}"
+                                     Foreground="{StaticResource SlTextSecondary}" FontSize="{StaticResource SlTextSmall}"
+                                     SelectionBrush="{StaticResource SlAccentTint30}" />
+
+                <StackPanel Spacing="6">
+                  <ctl:CapsText Classes="label" Value="Details" />
+                  <ItemsControl ItemsSource="{Binding Facts}">
+                    <ItemsControl.ItemTemplate>
+                      <DataTemplate x:DataType="svc:ServiceFact">
+                        <Grid ColumnDefinitions="112,*" ColumnSpacing="8" Margin="0,3">
+                          <TextBlock Classes="caption" Text="{Binding Label}" TextWrapping="Wrap" />
+                          <SelectableTextBlock Grid.Column="1" Text="{Binding Value}" TextWrapping="Wrap"
+                                               FontFamily="{StaticResource SlFontMono}" FontSize="{StaticResource SlTextSmall}"
+                                               SelectionBrush="{StaticResource SlAccentTint30}" />
+                        </Grid>
+                      </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                  </ItemsControl>
+                </StackPanel>
+
+                <StackPanel Spacing="6" IsVisible="{Binding HasProcess}">
+                  <ctl:CapsText Classes="label" Value="Process" />
+                  <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                    <TextBlock Classes="mono" FontSize="{StaticResource SlTextSmall}" Text="{Binding ProcessText}"
+                               VerticalAlignment="Center" />
+                    <Button Grid.Column="1" Theme="{StaticResource LinkButton}" Command="{Binding OpenProcessCommand}"
+                            ToolTip.Tip="Its CPU, memory and actions on the Processes page">
+                      <StackPanel Orientation="Horizontal" Spacing="4">
+                        <TextBlock Text="Show in Processes" FontSize="{StaticResource SlTextSmall}" VerticalAlignment="Center" />
+                        <ctl:Icon Width="14" Height="14" Data="{StaticResource IconChevronRight}" />
+                      </StackPanel>
+                    </Button>
+                  </Grid>
+                </StackPanel>
+              </StackPanel>
+            </StackPanel>
+          </ScrollViewer>
+        </DockPanel>
+      </Border>
+    </DataTemplate>
+  </UserControl.Resources>
+
+  <UserControl.Styles>
+    <Style Selector="TextBlock.cell">
+      <Setter Property="FontSize" Value="{StaticResource SlTextSmall}" />
+      <Setter Property="VerticalAlignment" Value="Center" />
+      <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+    </Style>
+    <Style Selector="TextBlock.number">
+      <Setter Property="FontFamily" Value="{StaticResource SlFontMono}" />
+      <Setter Property="FontSize" Value="{StaticResource SlTextSmall}" />
+      <Setter Property="HorizontalAlignment" Value="Right" />
+      <Setter Property="VerticalAlignment" Value="Center" />
+    </Style>
+    <Style Selector="Button.selected TextBlock.name">
+      <Setter Property="FontWeight" Value="SemiBold" />
+    </Style>
+    <Style Selector="Button.service">
+      <Setter Property="Padding" Value="24,6" />
+    </Style>
+    <!-- Grouped, services sit under their publisher's heading, and the publisher column would only repeat it. -->
+    <Style Selector="ItemsControl.grouped Button.service">
+      <Setter Property="Padding" Value="48,6,24,6" />
+    </Style>
+    <Style Selector="ItemsControl.grouped TextBlock.publisher">
+      <Setter Property="IsVisible" Value="False" />
+    </Style>
+  </UserControl.Styles>
+
+  <Panel>
+    <Grid RowDefinitions="Auto,Auto,Auto,Auto,*" Margin="{StaticResource SlContentPadding}" IsEnabled="{Binding !HasConfirmation}">
+      <StackPanel Spacing="4" Margin="0,0,0,16">
+        <TextBlock Classes="page-title" Text="Services" />
+        <TextBlock Classes="secondary" Text="{Binding Summary}" />
+      </StackPanel>
+
+      <!-- ========== Toolbar ========== -->
+      <!-- The search box gives way first, so the filters never overlap at narrow widths. -->
+      <Grid Grid.Row="1" ColumnSpacing="16" Margin="0,0,0,12">
+        <Grid.ColumnDefinitions>
+          <ColumnDefinition Width="Auto" />
+          <ColumnDefinition Width="*" MaxWidth="300" />
+          <ColumnDefinition Width="Auto" />
+          <ColumnDefinition Width="*" />
+          <ColumnDefinition Width="Auto" />
+        </Grid.ColumnDefinitions>
+        <StackPanel Orientation="Horizontal" Spacing="4" VerticalAlignment="Center" AutomationProperties.Name="Show">
+          <RadioButton Theme="{StaticResource SegmentButton}" GroupName="ServiceState" Content="All"
+                       IsChecked="{Binding IsAllStates}" ToolTip.Tip="Every service" />
+          <RadioButton Theme="{StaticResource SegmentButton}" GroupName="ServiceState" Content="Running"
+                       IsChecked="{Binding IsRunningOnly}" ToolTip.Tip="Services that run now, paused or on their way included" />
+          <RadioButton Theme="{StaticResource SegmentButton}" GroupName="ServiceState" Content="Stopped"
+                       IsChecked="{Binding IsStoppedOnly}" ToolTip.Tip="Services that aren't running" />
+        </StackPanel>
+
+        <TextBox Grid.Column="1" x:Name="Search" VerticalContentAlignment="Center"
+                 Text="{Binding SearchText}" PlaceholderText="Search by name, publisher or program"
+                 AutomationProperties.Name="Search services" ToolTip.Tip="Search (Ctrl+F)">
+          <TextBox.InnerLeftContent>
+            <ctl:Icon Width="16" Height="16" Margin="10,0,0,0" Foreground="{StaticResource SlTextSecondary}"
+                      Data="{StaticResource IconSearch}" />
+          </TextBox.InnerLeftContent>
+          <TextBox.InnerRightContent>
+            <Button Theme="{StaticResource IconButton}" Margin="0,0,4,0" IsVisible="{Binding HasSearch}"
+                    Command="{Binding ClearSearchCommand}" AutomationProperties.Name="Clear search">
+              <ctl:Icon Width="14" Height="14" Data="{StaticResource IconClose}" />
+            </Button>
+          </TextBox.InnerRightContent>
+        </TextBox>
+
+        <ToggleButton Grid.Column="2" Theme="{StaticResource SoftToggle}" VerticalAlignment="Center" IsChecked="{Binding IncludeDrivers}"
+                      ToolTip.Tip="Kernel and file system drivers as well as services">
+          <TextBlock Text="Drivers" />
+        </ToggleButton>
+
+        <StackPanel Grid.Column="4" Orientation="Horizontal" Spacing="4" VerticalAlignment="Center" AutomationProperties.Name="Layout">
+          <RadioButton Theme="{StaticResource SegmentButton}" GroupName="ServiceLayout" Content="Groups"
+                       IsChecked="{Binding IsGrouped}" ToolTip.Tip="Services under who made them: Windows, Microsoft, and each other publisher" />
+          <RadioButton Theme="{StaticResource SegmentButton}" GroupName="ServiceLayout" Content="List"
+                       IsChecked="{Binding IsFlat}" ToolTip.Tip="Every service in one sorted list" />
+        </StackPanel>
+      </Grid>
+
+      <!-- Without elevation Windows lists services but won't let most be changed: say so, and how to fix it. -->
+      <Border Grid.Row="2" Classes="callout info" Margin="0,0,0,12" IsVisible="{Binding ShowElevationHint}">
+        <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="10">
+          <ctl:Icon Classes="status" Width="16" Height="16" VerticalAlignment="Top" Data="{StaticResource IconShield}" />
+          <TextBlock Grid.Column="1" TextWrapping="Wrap" FontSize="{StaticResource SlTextSmall}"
+                     Text="Windows lets anyone see services, but only administrators can start, stop, change or uninstall most of them." />
+          <Button Grid.Column="2" Theme="{StaticResource LinkButton}" VerticalAlignment="Top" Command="{Binding RestartElevatedCommand}">
+            <TextBlock Text="Restart as administrator" FontSize="{StaticResource SlTextSmall}" />
+          </Button>
+        </Grid>
+      </Border>
+
+      <Border Grid.Row="3" Classes="callout info" Margin="0,0,0,12" IsVisible="{Binding HasNotice}">
+        <TextBlock Text="{Binding Notice}" TextWrapping="Wrap" FontSize="{StaticResource SlTextSmall}" />
+      </Border>
+
+      <Grid Grid.Row="4" x:Name="Body" ColumnDefinitions="*,Auto">
+        <!-- ========== Table ========== -->
+        <Border Classes="card" Padding="0" ClipToBounds="True">
+          <ScrollViewer HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled">
+            <Grid RowDefinitions="Auto,*" MinWidth="820">
+              <Border Classes="table-header">
+                <Grid ColumnDefinitions="*,104,148,148,56,Auto" ColumnSpacing="16">
+                  <ContentControl Content="{Binding NameColumn}" ContentTemplate="{StaticResource SortHeaderTemplate}" />
+                  <ContentControl Grid.Column="1" Content="{Binding StatusColumn}" ContentTemplate="{StaticResource SortHeaderTemplate}" />
+                  <ContentControl Grid.Column="2" Content="{Binding StartupColumn}" ContentTemplate="{StaticResource SortHeaderTemplate}" />
+                  <ContentControl Grid.Column="3" Content="{Binding AccountColumn}" ContentTemplate="{StaticResource SortHeaderTemplate}" />
+                  <ContentControl Grid.Column="4" Content="{Binding ProcessIdColumn}" ContentTemplate="{StaticResource SortHeaderTemplate}"
+                                  HorizontalContentAlignment="Right" />
+                  <ContentControl Grid.Column="5" Width="140" Content="{Binding PublisherColumn}"
+                                  ContentTemplate="{StaticResource SortHeaderTemplate}" IsVisible="{Binding IsFlat}" />
+                </Grid>
+              </Border>
+
+              <ItemsControl Grid.Row="1" x:Name="Table" ItemsSource="{Binding Items}" Classes.grouped="{Binding IsGrouped}"
+                            AutomationProperties.Name="Services">
+                <ItemsControl.Template>
+                  <ControlTemplate>
+                    <ScrollViewer HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
+                      <ItemsPresenter Name="PART_ItemsPresenter" ItemsPanel="{TemplateBinding ItemsPanel}" />
+                    </ScrollViewer>
+                  </ControlTemplate>
+                </ItemsControl.Template>
+                <ItemsControl.ItemsPanel>
+                  <ItemsPanelTemplate>
+                    <VirtualizingStackPanel />
+                  </ItemsPanelTemplate>
+                </ItemsControl.ItemsPanel>
+                <ItemsControl.DataTemplates>
+                  <!-- A publisher's heading: folds its services away. -->
+                  <DataTemplate DataType="svc:ServiceGroupRow" x:DataType="svc:ServiceGroupRow">
+                    <Border BorderBrush="{StaticResource SlBorder}" BorderThickness="0,0,0,1">
+                      <Button Theme="{StaticResource TableRow}" Padding="16,9" Command="{Binding ToggleCommand}"
+                              AutomationProperties.Name="{Binding AccessibleName}">
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                          <ctl:Icon Width="14" Height="14" VerticalAlignment="Center" Data="{Binding Glyph}"
+                                    Foreground="{StaticResource SlTextSecondary}" />
+                          <TextBlock Text="{Binding Name}" FontWeight="SemiBold" VerticalAlignment="Center" />
+                          <TextBlock Classes="caption" Text="{Binding CountText}" VerticalAlignment="Center" />
+                          <Border Classes="badge warning" Padding="4,0" VerticalAlignment="Center" IsVisible="{Binding IsMissing}"
+                                  ToolTip.Tip="The programs these services run aren't on disk: often leftovers of something uninstalled">
+                            <TextBlock Text="Check these" FontSize="{StaticResource SlTextLabel}" />
+                          </Border>
+                        </StackPanel>
+                      </Button>
+                    </Border>
+                  </DataTemplate>
+
+                  <DataTemplate DataType="svc:ServiceRow" x:DataType="svc:ServiceRow">
+                    <Button Classes="service" Theme="{StaticResource SelectableRow}" Classes.selected="{Binding IsSelected}"
+                            Command="{Binding SelectCommand}" AutomationProperties.Name="{Binding AccessibleName}">
+                      <Button.ContextMenu>
+                        <ContextMenu>
+                          <MenuItem Header="Start" Command="{Binding StartCommand}" IsEnabled="{Binding CanStart}" />
+                          <MenuItem Header="Stop" Command="{Binding StopCommand}" IsEnabled="{Binding CanStop}" />
+                          <MenuItem Header="Restart" Command="{Binding RestartCommand}" IsEnabled="{Binding CanStop}" />
+                          <MenuItem Header="Pause" Command="{Binding PauseCommand}" IsVisible="{Binding CanPause}" />
+                          <MenuItem Header="Resume" Command="{Binding ContinueCommand}" IsVisible="{Binding CanContinue}" />
+                          <Separator />
+                          <MenuItem Header="Edit…" Command="{Binding EditCommand}" />
+                          <MenuItem Header="Copy service name" Command="{Binding CopyNameCommand}" />
+                          <Separator />
+                          <MenuItem Header="Uninstall…" Command="{Binding UninstallCommand}" />
+                        </ContextMenu>
+                      </Button.ContextMenu>
+                      <Grid ColumnDefinitions="*,104,148,148,56,Auto" ColumnSpacing="16">
+                        <TextBlock Classes="cell name" Text="{Binding DisplayName}" ToolTip.Tip="{Binding ToolTip}" />
+                        <Border Grid.Column="1" Classes="badge" Classes.success="{Binding IsSuccess}" Classes.warning="{Binding IsWarning}"
+                                HorizontalAlignment="Left" VerticalAlignment="Center">
+                          <TextBlock Text="{Binding StatusText}" />
+                        </Border>
+                        <TextBlock Grid.Column="2" Classes="cell" Text="{Binding StartupText}" />
+                        <TextBlock Grid.Column="3" Classes="cell" Text="{Binding AccountText}" ToolTip.Tip="{Binding AccountText}" />
+                        <TextBlock Grid.Column="4" Classes="number" Text="{Binding ProcessIdText}" />
+                        <TextBlock Grid.Column="5" Classes="cell publisher" Width="140" Text="{Binding PublisherText}"
+                                   ToolTip.Tip="{Binding PublisherText}" />
+                      </Grid>
+                    </Button>
+                  </DataTemplate>
+                </ItemsControl.DataTemplates>
+              </ItemsControl>
+
+              <!-- Empty state (components.md): icon, what's missing, what to do. -->
+              <StackPanel Grid.Row="1" Spacing="8" Margin="24,64" HorizontalAlignment="Center" VerticalAlignment="Top">
+                <StackPanel.IsVisible>
+                  <MultiBinding Converter="{x:Static BoolConverters.And}">
+                    <Binding Path="IsEmpty" />
+                    <Binding Path="!IsLoading" />
+                  </MultiBinding>
+                </StackPanel.IsVisible>
+                <ctl:Icon Width="48" Height="48" HorizontalAlignment="Center" Foreground="{StaticResource SlTextSecondary}"
+                          Data="{StaticResource IconSearch}" />
+                <TextBlock Text="{Binding EmptyTitle}" HorizontalAlignment="Center" FontWeight="SemiBold" />
+                <TextBlock Classes="caption" Text="{Binding EmptyHint}" HorizontalAlignment="Center" />
+              </StackPanel>
+            </Grid>
+          </ScrollViewer>
+        </Border>
+
+        <ContentControl Grid.Column="1" x:Name="DetailsPane" Width="380" Margin="16,0,0,0"
+                        Content="{Binding Details}" ContentTemplate="{StaticResource DetailsTemplate}"
+                        IsVisible="{Binding HasDetails}" />
+      </Grid>
+    </Grid>
+
+    <!-- ========== Confirmation (components.md → Dialogs) ========== -->
+    <Border Background="{StaticResource SlScrim}" IsVisible="{Binding HasConfirmation}">
+      <Border Classes="dialog" Width="480" HorizontalAlignment="Center" VerticalAlignment="Center">
+        <StackPanel Spacing="16">
+          <ctl:CapsText Classes="dialog-title" Value="{Binding Confirmation.Title}" TextWrapping="Wrap" />
+          <TextBlock Text="{Binding Confirmation.Message}" TextWrapping="Wrap" />
+          <Border Classes="callout danger" IsVisible="{Binding Confirmation.HasWarning}">
+            <Grid ColumnDefinitions="Auto,*" ColumnSpacing="8">
+              <ctl:Icon Classes="status" Width="16" Height="16" VerticalAlignment="Top" Data="{StaticResource IconWarning}" />
+              <TextBlock Grid.Column="1" Text="{Binding Confirmation.Warning}" TextWrapping="Wrap" FontSize="{StaticResource SlTextSmall}" />
+            </Grid>
+          </Border>
+          <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Right">
+            <Button x:Name="ConfirmCancel" Theme="{StaticResource SoftButton}" Command="{Binding Confirmation.CancelCommand}"
+                    Content="Cancel" IsCancel="True" />
+            <Button Theme="{StaticResource DangerButton}" Command="{Binding Confirmation.ConfirmCommand}" IsVisible="{Binding ConfirmIsDanger}">
+              <StackPanel Orientation="Horizontal" Spacing="6">
+                <ctl:Icon Width="14" Height="14" Data="{Binding ConfirmIcon}" />
+                <TextBlock Text="{Binding Confirmation.ConfirmText}" VerticalAlignment="Center" />
+              </StackPanel>
+            </Button>
+            <Button Theme="{StaticResource SoftButton}" Command="{Binding Confirmation.ConfirmCommand}" IsVisible="{Binding ConfirmIsSoft}">
+              <StackPanel Orientation="Horizontal" Spacing="6">
+                <ctl:Icon Width="14" Height="14" Data="{Binding ConfirmIcon}" />
+                <TextBlock Text="{Binding Confirmation.ConfirmText}" VerticalAlignment="Center" />
+              </StackPanel>
+            </Button>
+          </StackPanel>
+        </StackPanel>
+      </Border>
+    </Border>
+  </Panel>
+</UserControl>

@@ -85,6 +85,13 @@ src/SocklessTaskManager/
                           not IP data; city coordinates come from the database, country dots from the label points.
                         - Monitoring runs only while the page is shown, or in the background for watched process
                           names or everything (network.ini); otherwise it costs nothing.
+    Services/           a top-level feature: Windows services (and drivers on request), grouped by publisher or in one
+                        list. ServiceManager wraps the SCM (enumerate, config, start/stop/pause, change, delete);
+                        actions run off the UI thread and wait on the service's state. ServicePublisher groups by
+                        the company in the program's version resource (svchost services by their ServiceDll):
+                        Microsoft files under the Windows folder are "Windows", elsewhere "Microsoft"; a missing
+                        program is its own group. Configs are read once per service, then a few per tick.
+                        Stopping a service whose dependents run asks first and stops them too, as services.msc does.
     Updates/            not a page: the top bar's update offer. Reads the latest tag from GitHub's /releases/latest
                         redirect, downloads the release zip, checks its .sha256, renames running files to .old and
                         moves the new ones in, then restarts. Local builds are version 0.0.0 and never check;
