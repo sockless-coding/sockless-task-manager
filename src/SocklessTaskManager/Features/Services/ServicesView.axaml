@@ -24,47 +24,99 @@
       </Button>
     </DataTemplate>
 
-    <!-- The edit form (svc:ServiceEditor): labels above fields, only what changed is saved. -->
+    <!-- A label and value of the details pane. -->
+    <DataTemplate x:Key="FactTemplate" x:DataType="svc:ServiceFact">
+      <Grid ColumnDefinitions="112,*" ColumnSpacing="8" Margin="0,3">
+        <TextBlock Classes="caption" Text="{Binding Label}" TextWrapping="Wrap" />
+        <SelectableTextBlock Grid.Column="1" Text="{Binding Value}" TextWrapping="Wrap"
+                             FontFamily="{StaticResource SlFontMono}" FontSize="{StaticResource SlTextSmall}"
+                             SelectionBrush="{StaticResource SlAccentTint30}" />
+      </Grid>
+    </DataTemplate>
+
+    <!-- A length of time (svc:DurationField): a number, and its unit. -->
+    <DataTemplate x:Key="DurationTemplate" x:DataType="svc:DurationField">
+      <Grid ColumnDefinitions="*,128" ColumnSpacing="8">
+        <TextBox Text="{Binding Text}" PlaceholderText="{Binding Placeholder}" FontFamily="{StaticResource SlFontMono}"
+                 AutomationProperties.Name="{Binding Label}" />
+        <ComboBox Grid.Column="1" HorizontalAlignment="Stretch" ItemsSource="{Binding Units}" SelectedItem="{Binding Unit}"
+                  AutomationProperties.Name="Unit">
+          <ComboBox.ItemTemplate>
+            <DataTemplate x:DataType="svc:DurationUnit">
+              <TextBlock Text="{Binding Title}" />
+            </DataTemplate>
+          </ComboBox.ItemTemplate>
+        </ComboBox>
+      </Grid>
+    </DataTemplate>
+
+    <!-- What to do on a failure, in the recovery page's lists. -->
+    <DataTemplate x:Key="RecoveryOptionTemplate" x:DataType="svc:RecoveryOption">
+      <TextBlock Text="{Binding Title}" />
+    </DataTemplate>
+
+    <!--
+      The edit form (svc:ServiceEditor), in the Services console's pages: General, Log on, Recovery.
+      Labels above fields; Save sends what changed on any page.
+    -->
     <DataTemplate x:Key="EditorTemplate" x:DataType="svc:ServiceEditor">
       <StackPanel Spacing="14">
-        <StackPanel Spacing="4">
-          <TextBlock Classes="caption" Text="Display name" />
-          <TextBox Text="{Binding DisplayName}" AutomationProperties.Name="Display name" />
+        <StackPanel Orientation="Horizontal" Spacing="4" IsVisible="{Binding HasPages}" AutomationProperties.Name="Settings">
+          <RadioButton Theme="{StaticResource SegmentButton}" GroupName="ServiceEditorPage" Content="General"
+                       IsChecked="{Binding IsGeneralPage}" ToolTip.Tip="Name, description, startup type and command line" />
+          <RadioButton Theme="{StaticResource SegmentButton}" GroupName="ServiceEditorPage" Content="Log on"
+                       IsChecked="{Binding IsLogOnPage}" ToolTip.Tip="The account it runs as" />
+          <RadioButton Theme="{StaticResource SegmentButton}" GroupName="ServiceEditorPage" Content="Recovery"
+                       IsChecked="{Binding IsRecoveryPage}" ToolTip.Tip="What Windows does when it fails" />
         </StackPanel>
 
-        <StackPanel Spacing="4">
-          <TextBlock Classes="caption" Text="Description" />
-          <TextBox Text="{Binding Description}" AcceptsReturn="True" TextWrapping="Wrap" MinHeight="120"
-                   VerticalContentAlignment="Top" AutomationProperties.Name="Description" />
+        <!-- ========== General ========== -->
+        <StackPanel Spacing="14" IsVisible="{Binding IsGeneralPage}">
+          <StackPanel Spacing="4">
+            <TextBlock Classes="caption" Text="Display name" />
+            <TextBox Text="{Binding DisplayName}" AutomationProperties.Name="Display name" />
+          </StackPanel>
+
+          <StackPanel Spacing="4">
+            <TextBlock Classes="caption" Text="Description" />
+            <TextBox Text="{Binding Description}" AcceptsReturn="True" TextWrapping="Wrap" MinHeight="120"
+                     VerticalContentAlignment="Top" AutomationProperties.Name="Description" />
+          </StackPanel>
+
+          <StackPanel Spacing="4">
+            <TextBlock Classes="caption" Text="Startup type" />
+            <ComboBox HorizontalAlignment="Stretch" ItemsSource="{Binding StartOptions}" SelectedItem="{Binding Start}"
+                      AutomationProperties.Name="Startup type">
+              <ComboBox.ItemTemplate>
+                <DataTemplate x:DataType="svc:StartOption">
+                  <StackPanel Spacing="1">
+                    <TextBlock Text="{Binding Title}" />
+                    <TextBlock Classes="caption" Text="{Binding Description}" />
+                  </StackPanel>
+                </DataTemplate>
+              </ComboBox.ItemTemplate>
+            </ComboBox>
+          </StackPanel>
+
+          <StackPanel Spacing="4">
+            <TextBlock Classes="caption" Text="Command line" />
+            <TextBox Text="{Binding ImagePath}" TextWrapping="Wrap" FontFamily="{StaticResource SlFontMono}"
+                     FontSize="{StaticResource SlTextSmall}" AutomationProperties.Name="Command line" />
+            <TextBlock Classes="caption" TextWrapping="Wrap"
+                       Text="Quote the program's path if it has spaces, or Windows may run something else." />
+          </StackPanel>
         </StackPanel>
 
-        <StackPanel Spacing="4">
-          <TextBlock Classes="caption" Text="Startup type" />
-          <ComboBox HorizontalAlignment="Stretch" ItemsSource="{Binding StartOptions}" SelectedItem="{Binding Start}"
-                    AutomationProperties.Name="Startup type">
-            <ComboBox.ItemTemplate>
-              <DataTemplate x:DataType="svc:StartOption">
-                <StackPanel Spacing="1">
-                  <TextBlock Text="{Binding Title}" />
-                  <TextBlock Classes="caption" Text="{Binding Description}" />
-                </StackPanel>
-              </DataTemplate>
-            </ComboBox.ItemTemplate>
-          </ComboBox>
-        </StackPanel>
-
-        <StackPanel Spacing="4">
-          <TextBlock Classes="caption" Text="Command line" />
-          <TextBox Text="{Binding ImagePath}" TextWrapping="Wrap" FontFamily="{StaticResource SlFontMono}"
-                   FontSize="{StaticResource SlTextSmall}" AutomationProperties.Name="Command line" />
-          <TextBlock Classes="caption" TextWrapping="Wrap"
-                     Text="Quote the program's path if it has spaces, or Windows may run something else." />
-        </StackPanel>
-
-        <StackPanel Spacing="6" IsVisible="{Binding HasAccount}">
+        <!-- ========== Log on ========== -->
+        <StackPanel Spacing="6" IsVisible="{Binding IsLogOnPage}">
           <TextBlock Classes="caption" Text="Log on as" />
           <RadioButton GroupName="ServiceAccount" Content="Local System" IsChecked="{Binding IsLocalSystem}"
                        ToolTip.Tip="Full control of this computer" />
+          <StackPanel Spacing="4" Margin="28,0,0,0" IsVisible="{Binding IsLocalSystem}">
+            <CheckBox Content="Allow it to interact with the desktop" IsChecked="{Binding AllowDesktop}" />
+            <TextBlock Classes="caption" TextWrapping="Wrap" IsVisible="{Binding AllowDesktop}"
+                       Text="Services run apart from signed-in users, so its windows open where no one sees them. Only old services need this." />
+          </StackPanel>
           <RadioButton GroupName="ServiceAccount" Content="Local Service" IsChecked="{Binding IsLocalService}"
                        ToolTip.Tip="A limited account; anonymous on the network" />
           <RadioButton GroupName="ServiceAccount" Content="Network Service" IsChecked="{Binding IsNetworkService}"
@@ -75,7 +127,66 @@
             <TextBox Text="{Binding Password}" PasswordChar="●" PlaceholderText="Password" AutomationProperties.Name="Password" />
             <TextBox Text="{Binding ConfirmPassword}" PasswordChar="●" PlaceholderText="Confirm password"
                      AutomationProperties.Name="Confirm password" />
+            <TextBlock Classes="caption" TextWrapping="Wrap"
+                       Text="Leave the password empty for NT SERVICE\name or a managed service account. Saving also gives the account the right to log on as a service." />
           </StackPanel>
+        </StackPanel>
+
+        <!-- ========== Recovery ========== -->
+        <StackPanel Spacing="14" IsVisible="{Binding IsRecoveryPage}">
+          <TextBlock Classes="caption" TextWrapping="Wrap"
+                     Text="A failure is the service's process ending without the service saying it stopped." />
+
+          <StackPanel Spacing="4">
+            <TextBlock Classes="caption" Text="First failure" />
+            <ComboBox HorizontalAlignment="Stretch" ItemsSource="{Binding RecoveryOptions}" SelectedItem="{Binding FirstFailure}"
+                      ItemTemplate="{StaticResource RecoveryOptionTemplate}" AutomationProperties.Name="First failure" />
+          </StackPanel>
+          <StackPanel Spacing="4">
+            <TextBlock Classes="caption" Text="Second failure" />
+            <ComboBox HorizontalAlignment="Stretch" ItemsSource="{Binding RecoveryOptions}" SelectedItem="{Binding SecondFailure}"
+                      ItemTemplate="{StaticResource RecoveryOptionTemplate}" AutomationProperties.Name="Second failure" />
+          </StackPanel>
+          <StackPanel Spacing="4">
+            <TextBlock Classes="caption" Text="Later failures" />
+            <ComboBox HorizontalAlignment="Stretch" ItemsSource="{Binding RecoveryOptions}" SelectedItem="{Binding SubsequentFailures}"
+                      ItemTemplate="{StaticResource RecoveryOptionTemplate}" AutomationProperties.Name="Later failures" />
+          </StackPanel>
+
+          <StackPanel Spacing="4" IsVisible="{Binding HasAnyAction}">
+            <TextBlock Classes="caption" Text="Reset the failure count after" />
+            <ContentControl Content="{Binding ResetAfter}" ContentTemplate="{StaticResource DurationTemplate}" />
+            <TextBlock Classes="caption" TextWrapping="Wrap"
+                       Text="Without a failure for this long, the next one counts as the first again. Leave it empty to never reset the count." />
+          </StackPanel>
+
+          <StackPanel Spacing="4" IsVisible="{Binding ShowsRestart}">
+            <TextBlock Classes="caption" Text="Restart the service after" />
+            <ContentControl Content="{Binding RestartAfter}" ContentTemplate="{StaticResource DurationTemplate}" />
+          </StackPanel>
+
+          <StackPanel Spacing="4" IsVisible="{Binding ShowsCommand}">
+            <TextBlock Classes="caption" Text="Program to run" />
+            <TextBox Text="{Binding Command}" TextWrapping="Wrap" FontFamily="{StaticResource SlFontMono}"
+                     FontSize="{StaticResource SlTextSmall}" PlaceholderText="&quot;C:\Tools\notify.exe&quot; --service name"
+                     AutomationProperties.Name="Program to run" />
+            <CheckBox Content="Add the failure count to its command line (/fail=N)" IsChecked="{Binding AppendFailCount}" />
+            <TextBlock Classes="caption" TextWrapping="Wrap"
+                       Text="It runs as the service's account. Quote the program's path if it has spaces." />
+          </StackPanel>
+
+          <StackPanel Spacing="4" IsVisible="{Binding ShowsReboot}">
+            <TextBlock Classes="caption" Text="Restart the computer after" />
+            <ContentControl Content="{Binding RebootAfter}" ContentTemplate="{StaticResource DurationTemplate}" />
+            <TextBlock Classes="caption" Text="Message to signed-in users" Margin="0,6,0,0" />
+            <TextBox Text="{Binding RebootMessage}" AcceptsReturn="True" TextWrapping="Wrap" MinHeight="72"
+                     VerticalContentAlignment="Top" PlaceholderText="Windows' own message"
+                     AutomationProperties.Name="Message to signed-in users" />
+          </StackPanel>
+
+          <CheckBox IsVisible="{Binding HasAnyAction}" IsChecked="{Binding OnErrorStops}">
+            <TextBlock TextWrapping="Wrap" Text="Also when it stops with an error, not only when it ends unexpectedly" />
+          </CheckBox>
         </StackPanel>
 
         <TextBlock Text="{Binding Error}" Foreground="{StaticResource SlDanger}" TextWrapping="Wrap"
@@ -154,7 +265,7 @@
                   </Button>
                   <ToggleButton Theme="{StaticResource SoftToggle}" Command="{Binding EditCommand}" IsEnabled="{Binding CanEdit}"
                                 IsChecked="{Binding IsEditing, Mode=OneWay}"
-                                ToolTip.Tip="Change its name, description, startup type, command line or account">
+                                ToolTip.Tip="Change its name, startup type, command line, account or recovery">
                     <StackPanel Orientation="Horizontal" Spacing="6">
                       <ctl:Icon Width="14" Height="14" Data="{StaticResource IconPencil}" />
                       <TextBlock Text="Edit" VerticalAlignment="Center" />
@@ -211,18 +322,29 @@
 
                 <StackPanel Spacing="6">
                   <ctl:CapsText Classes="label" Value="Details" />
-                  <ItemsControl ItemsSource="{Binding Facts}">
-                    <ItemsControl.ItemTemplate>
-                      <DataTemplate x:DataType="svc:ServiceFact">
-                        <Grid ColumnDefinitions="112,*" ColumnSpacing="8" Margin="0,3">
-                          <TextBlock Classes="caption" Text="{Binding Label}" TextWrapping="Wrap" />
-                          <SelectableTextBlock Grid.Column="1" Text="{Binding Value}" TextWrapping="Wrap"
-                                               FontFamily="{StaticResource SlFontMono}" FontSize="{StaticResource SlTextSmall}"
-                                               SelectionBrush="{StaticResource SlAccentTint30}" />
-                        </Grid>
-                      </DataTemplate>
-                    </ItemsControl.ItemTemplate>
-                  </ItemsControl>
+                  <ItemsControl ItemsSource="{Binding Facts}" ItemTemplate="{StaticResource FactTemplate}" />
+                </StackPanel>
+
+                <StackPanel Spacing="6" IsVisible="{Binding HasLogOn}">
+                  <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                    <ctl:CapsText Classes="label" Value="Log on" VerticalAlignment="Center" />
+                    <Button Grid.Column="1" Theme="{StaticResource LinkButton}" Command="{Binding EditLogOnCommand}"
+                            IsEnabled="{Binding CanEdit}" ToolTip.Tip="Change the account it runs as">
+                      <TextBlock Text="Change" FontSize="{StaticResource SlTextSmall}" />
+                    </Button>
+                  </Grid>
+                  <ItemsControl ItemsSource="{Binding LogOnFacts}" ItemTemplate="{StaticResource FactTemplate}" />
+                </StackPanel>
+
+                <StackPanel Spacing="6" IsVisible="{Binding HasRecovery}">
+                  <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                    <ctl:CapsText Classes="label" Value="Recovery" VerticalAlignment="Center" />
+                    <Button Grid.Column="1" Theme="{StaticResource LinkButton}" Command="{Binding EditRecoveryCommand}"
+                            IsEnabled="{Binding CanEdit}" ToolTip.Tip="Change what Windows does when it fails">
+                      <TextBlock Text="Change" FontSize="{StaticResource SlTextSmall}" />
+                    </Button>
+                  </Grid>
+                  <ItemsControl ItemsSource="{Binding RecoveryFacts}" ItemTemplate="{StaticResource FactTemplate}" />
                 </StackPanel>
 
                 <StackPanel Spacing="6" IsVisible="{Binding HasProcess}">

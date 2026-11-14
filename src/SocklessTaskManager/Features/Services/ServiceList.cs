@@ -528,7 +528,7 @@ public sealed class ServiceList : ObservableObject
         row.IsSelected = true;
         Notice = string.Empty;
         var details = new ServiceDetails(row.Name, new ServiceDetailActions(
-            () => Select(null), Start, AskStop, AskRestart, Pause, Continue, Edit, AskUninstall, OpenProcess));
+            () => Select(null), Start, AskStop, AskRestart, Pause, Continue, Edit, page => Edit(page), AskUninstall, OpenProcess));
         FillDetails(details, entry, snapshot);
         Details = details;
 
@@ -571,9 +571,6 @@ public sealed class ServiceList : ObservableObject
             new("Type", TypeText(status.Type, entry.Publisher.Program)),
             new("Startup type", StartText(config)),
         };
-
-        if (!IsDriver(status.Type))
-            facts.Add(new ServiceFact("Log on as", config is null ? "—" : AccountRaw(config.Account)));
 
         if (config is not null)
             facts.Add(new ServiceFact("Command line", config.ImagePath));
@@ -621,7 +618,53 @@ public sealed class ServiceList : ObservableObject
         }
 
         details.Facts = facts;
+
+        var isDriver = IsDriver(status.Type);
+        details.LogOnFacts = isDriver ? [] : LogOnFacts(config);
+        details.RecoveryFacts = isDriver || config is null ? [] : RecoveryFacts(config.Recovery);
     }
+
+    private static List<ServiceFact> LogOnFacts(ServiceConfig? config)
+    {
+        var facts = new List<ServiceFact> { new("Account", config is null ? "—" : AccountRaw(config.Account)) };
+        if (config is { IsInteractive: true })
+            facts.Add(new ServiceFact("Desktop", "May interact with it (session 0 only)"));
+        return facts;
+    }
+
+    /// <summary>As the Services console's Recovery tab reads, one line per failure; one line when nothing's set.</summary>
+    private static List<ServiceFact> RecoveryFacts(ServiceRecovery recovery)
+    {
+        if (!recovery.Uses(RecoveryAction.Restart) && !recovery.Uses(RecoveryAction.RunCommand) && !recovery.Uses(RecoveryAction.Reboot))
+            return [new ServiceFact("On failure", "Take no action")];
+
+        var facts = new List<ServiceFact>
+        {
+            new("First failure", RecoveryText(recovery.First, recovery)),
+            new("Second failure", RecoveryText(recovery.Second, recovery)),
+            new("Later failures", RecoveryText(recovery.Subsequent, recovery)),
+            new("Count resets", recovery.ResetSeconds == ServiceRecovery.Never
+                ? "Never"
+                : $"After {DurationField.Describe(recovery.ResetSeconds * 1000UL)} without a failure"),
+        };
+
+        if (recovery.Uses(RecoveryAction.RunCommand))
+            facts.Add(new ServiceFact("Program", recovery.Command.Length > 0 ? recovery.Command : "—"));
+        if (recovery.Uses(RecoveryAction.Reboot) && recovery.RebootMessage.Length > 0)
+            facts.Add(new ServiceFact("Restart message", recovery.RebootMessage));
+        facts.Add(new ServiceFact("Stops with errors", recovery.OnErrorStops ? "Count as failures" : "Don't count"));
+        return facts;
+    }
+
+    private static string RecoveryText(RecoveryAction action, ServiceRecovery recovery) => action switch
+    {
+        RecoveryAction.Restart => $"Restart the service after {DurationField.Describe(recovery.RestartDelay)}",
+        RecoveryAction.RunCommand => recovery.CommandDelay == 0
+            ? "Run a program"
+            : $"Run a program after {DurationField.Describe(recovery.CommandDelay)}",
+        RecoveryAction.Reboot => $"Restart the computer after {DurationField.Describe(recovery.RebootDelay)}",
+        _ => "Take no action",
+    };
 
     private void OpenProcess()
     {
@@ -738,16 +781,23 @@ public sealed class ServiceList : ObservableObject
         }, restart ? $"{display} restarted." : $"{display} is stopped.");
     }
 
-    private void Edit()
+    /// <summary>The Edit button: opens the form at its first page, or closes it.</summary>
+    private void Edit() => Edit(null);
+
+    /// <summary>With a page, opens the form there (or turns an open form to it); without one, toggles the form.</summary>
+    private void Edit(EditorPage? page)
     {
         if (_details is not { } details || Target() is not { } target)
             return;
 
         var (name, display, entry) = target;
 
-        if (details.Editor is not null)
+        if (details.Editor is { } open)
         {
-            details.Editor = null;
+            if (page is { } wanted)
+                open.Page = wanted;
+            else
+                details.Editor = null;
             return;
         }
 
@@ -759,7 +809,7 @@ public sealed class ServiceList : ObservableObject
         }
 
         details.Message = string.Empty;
-        details.Editor = new ServiceEditor(display, config, IsDriver(entry.Status.Type),
+        details.Editor = new ServiceEditor(display, config, IsDriver(entry.Status.Type), page ?? EditorPage.General,
             change => Run(name, $"Saving {display}…", () => ServiceManager.Change(name, change), "Saved.", ok =>
             {
                 if (ok && _details is { } shown && shown.Name == name)

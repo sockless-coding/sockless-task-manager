@@ -365,6 +365,42 @@
       <StaticResource x:Key="ComboBoxItemBackgroundSelectedPressed" ResourceKey="SlAccentTint20" />
 
       <!--
+        Checkboxes and radio buttons (components.md → Forms): copper-light when checked, with an
+        iron mark on it. These keys restyle Fluent's, which would otherwise take Windows' accent.
+      -->
+      <StaticResource x:Key="CheckBoxForegroundUnchecked" ResourceKey="SlText" />
+      <StaticResource x:Key="CheckBoxForegroundUncheckedPointerOver" ResourceKey="SlText" />
+      <StaticResource x:Key="CheckBoxForegroundUncheckedPressed" ResourceKey="SlText" />
+      <StaticResource x:Key="CheckBoxForegroundChecked" ResourceKey="SlText" />
+      <StaticResource x:Key="CheckBoxForegroundCheckedPointerOver" ResourceKey="SlText" />
+      <StaticResource x:Key="CheckBoxForegroundCheckedPressed" ResourceKey="SlText" />
+      <StaticResource x:Key="CheckBoxCheckBackgroundStrokeUncheckedPointerOver" ResourceKey="SlAccentLine" />
+      <StaticResource x:Key="CheckBoxCheckBackgroundStrokeUncheckedPressed" ResourceKey="SlAccent" />
+      <StaticResource x:Key="CheckBoxCheckBackgroundFillChecked" ResourceKey="SlAccent" />
+      <StaticResource x:Key="CheckBoxCheckBackgroundFillCheckedPointerOver" ResourceKey="SlAccentHover" />
+      <StaticResource x:Key="CheckBoxCheckBackgroundFillCheckedPressed" ResourceKey="SlAccentLine" />
+      <StaticResource x:Key="CheckBoxCheckBackgroundStrokeCheckedPointerOver" ResourceKey="SlAccentHover" />
+      <StaticResource x:Key="CheckBoxCheckBackgroundStrokeCheckedPressed" ResourceKey="SlAccentLine" />
+      <StaticResource x:Key="CheckBoxCheckGlyphForegroundChecked" ResourceKey="SlBg" />
+      <StaticResource x:Key="CheckBoxCheckGlyphForegroundCheckedPointerOver" ResourceKey="SlBg" />
+      <StaticResource x:Key="CheckBoxCheckGlyphForegroundCheckedPressed" ResourceKey="SlBg" />
+
+      <StaticResource x:Key="RadioButtonForeground" ResourceKey="SlText" />
+      <StaticResource x:Key="RadioButtonForegroundPointerOver" ResourceKey="SlText" />
+      <StaticResource x:Key="RadioButtonForegroundPressed" ResourceKey="SlText" />
+      <StaticResource x:Key="RadioButtonOuterEllipseStrokePointerOver" ResourceKey="SlAccentLine" />
+      <StaticResource x:Key="RadioButtonOuterEllipseStrokePressed" ResourceKey="SlAccent" />
+      <StaticResource x:Key="RadioButtonOuterEllipseCheckedStroke" ResourceKey="SlAccent" />
+      <StaticResource x:Key="RadioButtonOuterEllipseCheckedStrokePointerOver" ResourceKey="SlAccentHover" />
+      <StaticResource x:Key="RadioButtonOuterEllipseCheckedStrokePressed" ResourceKey="SlAccentLine" />
+      <StaticResource x:Key="RadioButtonOuterEllipseCheckedFill" ResourceKey="SlAccent" />
+      <StaticResource x:Key="RadioButtonOuterEllipseCheckedFillPointerOver" ResourceKey="SlAccentHover" />
+      <StaticResource x:Key="RadioButtonOuterEllipseCheckedFillPressed" ResourceKey="SlAccentLine" />
+      <StaticResource x:Key="RadioButtonCheckGlyphFill" ResourceKey="SlBg" />
+      <StaticResource x:Key="RadioButtonCheckGlyphFillPointerOver" ResourceKey="SlBg" />
+      <StaticResource x:Key="RadioButtonCheckGlyphFillPressed" ResourceKey="SlBg" />
+
+      <!--
         Context menus, as the website's dropdowns (components.md → Navigation): the surface with
         an accent rim; items in body text, copper-light on hover.
       -->

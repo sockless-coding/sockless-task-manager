@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Globalization;
 using System.Runtime.InteropServices;
+using Sockless.TaskManager.Core.Interop;
 
 namespace Sockless.TaskManager.Features.Services;
 
@@ -41,27 +42,82 @@ internal readonly record struct ServiceStatus(
     int ProcessId,
     int ExitCode);
 
+/// <summary>What Windows does when a service fails: SC_ACTION_*.</summary>
+internal enum RecoveryAction
+{
+    None = 0,
+    Restart = 1,
+    Reboot = 2,
+    RunCommand = 3,
+}
+
+/// <summary>
+/// SERVICE_FAILURE_ACTIONS and its flag: what the Service Control Manager does after the first,
+/// second and later failures, and when it forgets them. A failure is the process ending without the
+/// service saying it stopped; with <paramref name="OnErrorStops"/>, also a stop with an error code.
+/// </summary>
+/// <param name="ResetSeconds">Failures are counted afresh after this long without one; <see cref="Never"/> keeps the count.</param>
+/// <param name="RestartDelay">Milliseconds before a restart.</param>
+/// <param name="RebootDelay">Milliseconds before the computer restarts.</param>
+/// <param name="CommandDelay">Milliseconds before the program runs. The form keeps what Windows has.</param>
+/// <param name="Command">The program a run-a-program action starts, with its arguments.</param>
+/// <param name="RebootMessage">Sent to signed-in users before a restart; empty for Windows' own.</param>
+internal sealed record ServiceRecovery(
+    RecoveryAction First,
+    RecoveryAction Second,
+    RecoveryAction Subsequent,
+    uint ResetSeconds,
+    uint RestartDelay,
+    uint RebootDelay,
+    uint CommandDelay,
+    string Command,
+    string RebootMessage,
+    bool OnErrorStops)
+{
+    /// <summary>INFINITE: the failure count is never reset.</summary>
+    public const uint Never = uint.MaxValue;
+
+    /// <summary>A minute, as the Services console suggests.</summary>
+    public const uint DefaultDelay = 60_000;
+
+    /// <summary>What a service has when nothing was set up.</summary>
+    public static ServiceRecovery Nothing { get; } = new(RecoveryAction.None, RecoveryAction.None, RecoveryAction.None,
+        0, DefaultDelay, DefaultDelay, 0, string.Empty, string.Empty, false);
+
+    public bool Uses(RecoveryAction action) => First == action || Second == action || Subsequent == action;
+}
+
 /// <summary>What <c>QueryServiceConfigW</c> and <c>QueryServiceConfig2W</c> say: read once per service, and again after a change.</summary>
+/// <param name="Type">SERVICE_WIN32_OWN_PROCESS and friends, with SERVICE_INTERACTIVE_PROCESS.</param>
 /// <param name="ImagePath">The command line as registered, arguments included.</param>
 /// <param name="Account">Who it runs as: LocalSystem, NT AUTHORITY\LocalService, .\someone… Empty for drivers.</param>
 /// <param name="Dependencies">Services (and "+group" load-order groups) it needs running first.</param>
 internal sealed record ServiceConfig(
+    uint Type,
     StartMode Start,
     string ImagePath,
     string Account,
     string Description,
     IReadOnlyList<string> Dependencies,
     uint ErrorControl,
-    bool HasTriggers);
+    bool HasTriggers,
+    ServiceRecovery Recovery)
+{
+    /// <summary>Allowed to interact with the desktop. Only LocalSystem may, and since Vista it reaches only session 0's.</summary>
+    public bool IsInteractive => (Type & ServiceManager.InteractiveProcess) != 0;
+}
 
 /// <summary>What the edit form changes; null fields are left as they are.</summary>
+/// <param name="Type">The service type, to set or clear SERVICE_INTERACTIVE_PROCESS.</param>
 internal sealed record ServiceChange(
     string? DisplayName,
     string? Description,
     StartMode? Start,
     string? ImagePath,
     string? Account,
-    string? Password);
+    string? Password,
+    uint? Type,
+    ServiceRecovery? Recovery);
 
 /// <summary>
 /// The Service Control Manager, through advapi32. Listing and reading need no elevation; starting,
@@ -90,6 +146,7 @@ internal static unsafe partial class ServiceManager
     public const uint Win32ShareProcess = 0x20;
     public const uint UserService = 0x40;
     public const uint UserServiceInstance = 0x80;
+    public const uint InteractiveProcess = 0x100;
     private const uint DriverTypes = KernelDriver | FileSystemDriver | 0x08;
     private const uint Win32Types = Win32OwnProcess | Win32ShareProcess;
 
@@ -104,7 +161,9 @@ internal static unsafe partial class ServiceManager
     private const uint StateActive = 0x1;
     private const uint NoChange = 0xFFFFFFFF;
     private const int ConfigDescription = 1;
+    private const int ConfigFailureActions = 2;
     private const int ConfigDelayedAutoStart = 3;
+    private const int ConfigFailureActionsFlag = 4;
     private const int ConfigTriggerInfo = 8;
 
     // Errors.
@@ -124,6 +183,7 @@ internal static unsafe partial class ServiceManager
     private const int DependentSize = 48;
 
     // QUERY_SERVICE_CONFIGW (64-bit).
+    private const int ConfigServiceType = 0;
     private const int ConfigStartType = 4;
     private const int ConfigErrorControl = 8;
     private const int ConfigBinaryPath = 16;
@@ -225,10 +285,11 @@ internal static unsafe partial class ServiceManager
 
         StartMode start;
         string imagePath, account;
-        uint errorControl;
+        uint type, errorControl;
         List<string> dependencies = [];
         fixed (byte* b = config)
         {
+            type = *(uint*)(b + ConfigServiceType);
             var startType = *(uint*)(b + ConfigStartType);
             errorControl = *(uint*)(b + ConfigErrorControl);
             imagePath = Text(*(char**)(b + ConfigBinaryPath));
@@ -275,7 +336,55 @@ internal static unsafe partial class ServiceManager
                 hasTriggers = *(uint*)b > 0;
         }
 
-        return new ServiceConfig(start, imagePath, account, ExpandResource(description), dependencies, errorControl, hasTriggers);
+        return new ServiceConfig(type, start, imagePath, account, ExpandResource(description), dependencies, errorControl, hasTriggers,
+            ReadRecovery(service));
+    }
+
+    /// <summary>
+    /// The failure actions as the Services console shows them: first, second and subsequent.
+    /// Windows repeats the last action for failures past the list, so a shorter list fills out with it.
+    /// </summary>
+    private static ServiceRecovery ReadRecovery(nint service)
+    {
+        var recovery = ServiceRecovery.Nothing;
+        if (Query(service, static (h, b, size, out needed) => QueryServiceConfig2(h, ConfigFailureActions, b, size, out needed)) is { } failure)
+        {
+            fixed (byte* b = failure)
+            {
+                var info = (FailureActions*)b;
+                var count = info->Actions is null ? 0 : (int)info->Count;
+                var actions = new RecoveryAction[3];
+                uint? restart = null, reboot = null, command = null;
+                for (var i = 0; i < count; i++)
+                {
+                    var action = info->Actions[i];
+                    var kind = (RecoveryAction)action.Type;
+                    if (i < 3)
+                        actions[i] = kind;
+                    if (kind == RecoveryAction.Restart)
+                        restart ??= action.Delay;
+                    else if (kind == RecoveryAction.Reboot)
+                        reboot ??= action.Delay;
+                    else if (kind == RecoveryAction.RunCommand)
+                        command ??= action.Delay;
+                }
+
+                for (var i = Math.Max(count, 1); i < 3; i++)
+                    actions[i] = actions[i - 1];
+
+                recovery = new ServiceRecovery(actions[0], actions[1], actions[2], info->ResetPeriod,
+                    restart ?? ServiceRecovery.DefaultDelay, reboot ?? ServiceRecovery.DefaultDelay, command ?? 0,
+                    Text(info->Command), Text(info->RebootMessage), false);
+            }
+        }
+
+        if (Query(service, static (h, b, size, out needed) => QueryServiceConfig2(h, ConfigFailureActionsFlag, b, size, out needed)) is { } flag)
+        {
+            fixed (byte* b = flag)
+                recovery = recovery with { OnErrorStops = *(int*)b != 0 };
+        }
+
+        return recovery;
     }
 
     /// <summary>The running services that need this one, in the order to stop them (dependents of dependents first).</summary>
@@ -349,8 +458,23 @@ internal static unsafe partial class ServiceManager
 
     public static string? Continue(string name) => Control(name, ServicePauseContinue, ControlContinue, ServiceState.Running, ServiceState.ContinuePending);
 
-    /// <summary>Applies the edit form. The password goes only with an account, as Windows wants.</summary>
-    public static string? Change(string name, ServiceChange change) => WithService(name, ServiceChangeConfig | ServiceQueryConfig, service =>
+    /// <summary>
+    /// Applies the edit form. The password goes only with an account, as Windows wants. A person's
+    /// account is also given the right to log on as a service, as the Services console does.
+    /// </summary>
+    public static string? Change(string name, ServiceChange change)
+    {
+        // A restart action needs the right to start the service; a computer restart, the shutdown privilege.
+        var access = ServiceChangeConfig | ServiceQueryConfig;
+        if (change.Recovery?.Uses(RecoveryAction.Restart) == true)
+            access |= ServiceStart;
+        if (change.Recovery?.Uses(RecoveryAction.Reboot) == true && !Privileges.Enable(Privileges.Shutdown))
+            return "Restarting the computer after a failure needs administrator rights.";
+
+        return WithService(name, access, service => Change(service, change));
+    }
+
+    private static string? Change(nint service, ServiceChange change)
     {
         var startType = change.Start switch
         {
@@ -363,9 +487,10 @@ internal static unsafe partial class ServiceManager
             _ => NoChange,
         };
 
-        if (startType != NoChange || change.ImagePath is not null || change.Account is not null || change.DisplayName is not null)
+        if (startType != NoChange || change.ImagePath is not null || change.Account is not null || change.DisplayName is not null
+            || change.Type is not null)
         {
-            if (!ChangeServiceConfig(service, NoChange, startType, NoChange, change.ImagePath, null, null, null,
+            if (!ChangeServiceConfig(service, change.Type ?? NoChange, startType, NoChange, change.ImagePath, null, null, null,
                     change.Account, change.Account is null ? null : change.Password ?? string.Empty, change.DisplayName))
                 return Failure(Marshal.GetLastPInvokeError());
         }
@@ -387,8 +512,53 @@ internal static unsafe partial class ServiceManager
                 return Failure(Marshal.GetLastPInvokeError());
         }
 
+        if (change.Recovery is { } recovery && ChangeRecovery(service, recovery) is { } failure)
+            return failure;
+
+        if (change.Account is { } account && ServiceLogonRight.Grant(account) is { } refused)
+            return $"Saved, but {account} couldn't be given the right to log on as a service, so it may not start. {refused}";
+
         return null;
-    });
+    }
+
+    /// <summary>Writes all three actions, the reset period, the program and the message; empty strings clear the last two.</summary>
+    private static string? ChangeRecovery(nint service, ServiceRecovery recovery)
+    {
+        var actions = stackalloc ScAction[3];
+        ReadOnlySpan<RecoveryAction> kinds = [recovery.First, recovery.Second, recovery.Subsequent];
+        for (var i = 0; i < 3; i++)
+        {
+            actions[i] = new ScAction
+            {
+                Type = (int)kinds[i],
+                Delay = kinds[i] switch
+                {
+                    RecoveryAction.Restart => recovery.RestartDelay,
+                    RecoveryAction.Reboot => recovery.RebootDelay,
+                    RecoveryAction.RunCommand => recovery.CommandDelay,
+                    _ => 0,
+                },
+            };
+        }
+
+        fixed (char* command = recovery.Command)
+        fixed (char* message = recovery.RebootMessage)
+        {
+            var info = new FailureActions
+            {
+                ResetPeriod = recovery.ResetSeconds,
+                RebootMessage = message,
+                Command = command,
+                Count = 3,
+                Actions = actions,
+            };
+            if (!ChangeServiceConfig2(service, ConfigFailureActions, &info))
+                return Failure(Marshal.GetLastPInvokeError());
+        }
+
+        var flag = recovery.OnErrorStops ? 1 : 0;
+        return ChangeServiceConfig2(service, ConfigFailureActionsFlag, &flag) ? null : Failure(Marshal.GetLastPInvokeError());
+    }
 
     /// <summary>Removes its registration. A running service goes once it stops; its files stay on disk.</summary>
     public static string? Remove(string name) => WithService(name, Delete, service =>
@@ -496,16 +666,29 @@ internal static unsafe partial class ServiceManager
 
     private delegate bool QueryCall(nint service, byte* buffer, uint size, out uint needed);
 
-    /// <summary>Asks for the size, then the data. Null when Windows refuses or the service has none.</summary>
+    /// <summary>
+    /// Tries a buffer most answers fit, and asks again with the size Windows wants only when it
+    /// doesn't: one call to services.exe instead of two, for each of the settings read per service.
+    /// Null when Windows refuses.
+    /// </summary>
     private static byte[]? Query(nint service, QueryCall call)
     {
-        call(service, null, 0, out var needed);
-        if (Marshal.GetLastPInvokeError() != ErrorInsufficientBuffer || needed == 0)
-            return null;
+        var buffer = new byte[2048];
+        for (var attempt = 0; attempt < 3; attempt++)
+        {
+            uint needed;
+            fixed (byte* b = buffer)
+            {
+                if (call(service, b, (uint)buffer.Length, out needed))
+                    return buffer;
+            }
 
-        var buffer = new byte[needed];
-        fixed (byte* b = buffer)
-            return call(service, b, needed, out _) ? buffer : null;
+            if (Marshal.GetLastPInvokeError() != ErrorInsufficientBuffer || needed <= buffer.Length)
+                return null;
+            buffer = new byte[needed];
+        }
+
+        return null;
     }
 
     private static string Text(char* p) => p is null ? string.Empty : new string(p);
@@ -532,6 +715,25 @@ internal static unsafe partial class ServiceManager
         public uint WaitHint;
         public uint ProcessId;
         public uint ServiceFlags;
+    }
+
+    /// <summary>SERVICE_FAILURE_ACTIONSW.</summary>
+    [StructLayout(LayoutKind.Sequential)]
+    private struct FailureActions
+    {
+        public uint ResetPeriod;
+        public char* RebootMessage;
+        public char* Command;
+        public uint Count;
+        public ScAction* Actions;
+    }
+
+    /// <summary>SC_ACTION: what, and how many milliseconds after the failure.</summary>
+    [StructLayout(LayoutKind.Sequential)]
+    private struct ScAction
+    {
+        public int Type;
+        public uint Delay;
     }
 
     [StructLayout(LayoutKind.Sequential)]

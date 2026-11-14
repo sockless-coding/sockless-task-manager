@@ -1,6 +1,7 @@
 using System.Buffers.Binary;
 using System.Runtime.InteropServices;
 using Sockless.TaskManager.Core;
+using Sockless.TaskManager.Core.Interop;
 
 namespace Sockless.TaskManager.Features.Storage;
 
@@ -13,12 +14,6 @@ internal static unsafe partial class StorageNative
     private const uint BackupSemantics = 0x02000000;
     private const int FileFullDirectoryInfo = 14;
 
-    private const uint TokenAdjustPrivileges = 0x0020;
-    private const uint TokenQuery = 0x0008;
-    private const uint PrivilegeEnabled = 0x0002;
-
-    private static int _backupEnabled;
-
     /// <summary>
     /// Elevated, the backup privilege lets a directory opened with backup semantics be listed
     /// whatever its ACL says (System Volume Information, other users' profiles). It only has an
@@ -26,24 +21,8 @@ internal static unsafe partial class StorageNative
     /// </summary>
     public static void EnableBackupPrivilege()
     {
-        if (!Elevation.IsElevated || Interlocked.Exchange(ref _backupEnabled, 1) == 1)
-            return;
-
-        if (!OpenProcessToken(GetCurrentProcess(), TokenAdjustPrivileges | TokenQuery, out var token))
-            return;
-
-        try
-        {
-            if (!LookupPrivilegeValue(null, "SeBackupPrivilege", out var luid))
-                return;
-
-            var privileges = new TokenPrivileges { Count = 1, Luid = luid, Attributes = PrivilegeEnabled };
-            AdjustTokenPrivileges(token, false, &privileges, 0, null, null);
-        }
-        finally
-        {
-            CloseHandle(token);
-        }
+        if (Elevation.IsElevated)
+            Privileges.Enable(Privileges.Backup);
     }
 
     /// <summary>Opens a directory for listing; -1 if it can't be read.</summary>
@@ -146,21 +125,6 @@ internal static unsafe partial class StorageNative
     [return: MarshalAs(UnmanagedType.Bool)]
     private static partial bool SHObjectProperties(nint owner, uint type, char* name, char* page);
 
-    [StructLayout(LayoutKind.Sequential)]
-    private struct Luid
-    {
-        public uint Low;
-        public int High;
-    }
-
-    [StructLayout(LayoutKind.Sequential)]
-    private struct TokenPrivileges
-    {
-        public uint Count;
-        public Luid Luid;
-        public uint Attributes;
-    }
-
     [LibraryImport("kernel32.dll", EntryPoint = "CreateFileW", StringMarshalling = StringMarshalling.Utf16)]
     private static partial nint CreateFile(string name, uint access, uint share, nint security, uint disposition, uint flags, nint template);
 
@@ -171,21 +135,6 @@ internal static unsafe partial class StorageNative
     [LibraryImport("kernel32.dll")]
     [return: MarshalAs(UnmanagedType.Bool)]
     private static partial bool CloseHandle(nint handle);
-
-    [LibraryImport("kernel32.dll")]
-    private static partial nint GetCurrentProcess();
-
-    [LibraryImport("advapi32.dll")]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    private static partial bool OpenProcessToken(nint process, uint access, out nint token);
-
-    [LibraryImport("advapi32.dll", EntryPoint = "LookupPrivilegeValueW", StringMarshalling = StringMarshalling.Utf16)]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    private static partial bool LookupPrivilegeValue(string? system, string name, out Luid luid);
-
-    [LibraryImport("advapi32.dll")]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    private static partial bool AdjustTokenPrivileges(nint token, [MarshalAs(UnmanagedType.Bool)] bool disableAll, TokenPrivileges* state, uint length, TokenPrivileges* previous, uint* returned);
 }
 
 /// <summary>

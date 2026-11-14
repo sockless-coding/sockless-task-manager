@@ -92,13 +92,16 @@ src/SocklessTaskManager/
                         Microsoft files under the Windows folder are "Windows", elsewhere "Microsoft"; a missing
                         program is its own group. Configs are read once per service, then a few per tick.
                         Stopping a service whose dependents run asks first and stops them too, as services.msc does.
+                        The edit form has services.msc's pages: General, Log on (a person's account is granted
+                        SeServiceLogonRight through the LSA, or the service won't start) and Recovery (failure
+                        actions; Windows repeats the last one, and a computer restart needs SeShutdownPrivilege).
     Updates/            not a page: the top bar's update offer. Reads the latest tag from GitHub's /releases/latest
                         redirect, downloads the release zip, checks its .sha256, renames running files to .old and
                         moves the new ones in, then restarts. Local builds are version 0.0.0 and never check;
                         the asset names must match release.yml.
 ```
 
-A slice owns everything it needs: native calls, sensor, view model and view. Slices don't reference each other. Code moves into `Core/` only when a second slice needs it (PDH, `GetPerformanceInfo` and `NtQuerySystemInformation` with its process-list parser are there for that reason, as are `Accounts` (process token owners), `Elevation` and `Confirmation`, shared by Processes and Users, `AddressSpace`, shared by Processes and Memory, and `EtwSession` (a real-time ETW session) with the kernel's process-start event, shared by Processes and Network).
+A slice owns everything it needs: native calls, sensor, view model and view. Slices don't reference each other. Code moves into `Core/` only when a second slice needs it (PDH, `GetPerformanceInfo` and `NtQuerySystemInformation` with its process-list parser are there for that reason, as are `Accounts` (process token owners), `Elevation` and `Confirmation`, shared by Processes and Users, `AddressSpace`, shared by Processes and Memory, `EtwSession` (a real-time ETW session) with the kernel's process-start event, shared by Processes and Network, and `Privileges` (enable a token privilege), shared by Storage and Services).
 
 When one slice needs to show another's page, it goes through `Core/Navigator.cs`: Users and Memory call `ShowProcesses(new ProcessQuery(...))`, the Processes feature applies it and calls `Open(this)`, and the shell selects it. Pages may list processes in their own terms (shares of memory, a user's processes), but a process's details, actions and drill-downs live only on the Processes page: a row elsewhere opens it there rather than growing details of its own. If a page needs more than `ProcessQuery` offers, add it there.
 
