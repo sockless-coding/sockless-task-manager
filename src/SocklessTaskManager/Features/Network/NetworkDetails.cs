@@ -52,6 +52,7 @@ internal enum DetailsKind
     Connection,
     Listener,
     Process,
+    Place,
 }
 
 /// <summary>
@@ -102,6 +103,13 @@ public sealed class NetworkDetails : ObservableObject
     public bool IsConnection => Kind == DetailsKind.Connection;
 
     public bool IsProcess => Kind == DetailsKind.Process;
+
+    /// <summary>A connection, port or process: there's a process to open and watch.</summary>
+    public bool HasProcess => Kind != DetailsKind.Place;
+
+    public bool CanCopy => Kind is DetailsKind.Connection or DetailsKind.Listener;
+
+    public string ShowConnectionsText => Kind == DetailsKind.Place ? "These connections in History" : "All of this process's connections";
 
     public ICommand CloseCommand { get; }
 

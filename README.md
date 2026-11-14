@@ -42,6 +42,7 @@ The **Network** page is for finding out what is talking to what. It lists open c
 
 - **Host names**: the names apps looked up, from Windows' DNS cache (and, as administrator, from tracing lookups as they happen), which sends nothing; reverse lookups for the rest can be turned off.
 - **Locations and network owners**: from a MaxMind DB (.mmdb) file on this computer. None ships with the app: download DB-IP's free country, city or ASN database from Settings, or add one you have (GeoLite2, IPinfo Lite).
+- **Map**: with a location database installed, a world map shows where the other ends are: a dot per city (or per country, with a country-only database) sized by its connections, countries shaded by how many end there, and a line from your Windows region to each place, solid for outgoing and dashed for incoming. Zoom with the wheel, drag to move; select a place for its connections, processes and networks. The filters and search apply to it too.
 - **Recording**: the page records while it's open. Watch a process (by name, so restarts count) to keep recording its connections while the page is closed, or record everything in the background.
 - **As administrator**, an ETW trace adds bytes sent and received per connection and per process (with a graph), connections that open and close between two samples, UDP conversations, and names for processes that exit within a second.
 
@@ -92,4 +93,5 @@ The code is organised in vertical slices: each feature, and each device kind ins
 - Fonts: [Oswald](https://github.com/googlefonts/OswaldFont), [Raleway](https://github.com/impallari/Raleway) and [Roboto Mono](https://github.com/googlefonts/robotomono), SIL Open Font License 1.1 (licence texts in `src/SocklessTaskManager/Assets/Fonts`).
 - Icons: [Heroicons](https://heroicons.com) v2.2.0, MIT License.
 - UI framework: [Avalonia](https://avaloniaui.net), MIT License.
+- Map outline: [Natural Earth](https://www.naturalearthdata.com), public domain (`tools/New-WorldMap.ps1` builds the embedded copy).
 - IP geolocation, when you download it from the Network page's settings: [DB-IP](https://db-ip.com) Lite databases, CC BY 4.0. Not included in the app.

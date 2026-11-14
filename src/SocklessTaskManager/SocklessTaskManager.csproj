@@ -25,6 +25,8 @@
   <ItemGroup>
     <AvaloniaResource Include="Assets\Fonts\*.ttf" />
     <AvaloniaResource Include="Assets\app.ico" />
+    <!-- The Network page's map outline: Natural Earth, public domain, built by tools/New-WorldMap.ps1. -->
+    <EmbeddedResource Include="Features\Network\WorldMap.bin" LogicalName="WorldMap.bin" />
   </ItemGroup>
 
   <!--

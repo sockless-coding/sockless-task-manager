@@ -11,9 +11,14 @@ internal sealed record GeoInfo(
     string? Region,
     string? City,
     long? Asn,
-    string? Organization)
+    string? Organization,
+    double? Latitude = null,
+    double? Longitude = null)
 {
     public static readonly GeoInfo Empty = new(null, null, null, null, null, null);
+
+    /// <summary>City databases place an address (roughly); country ones don't.</summary>
+    public bool HasCoordinates => Latitude is not null && Longitude is not null;
 
     /// <summary>"Stockholm, Sweden", "Sweden", or "SE".</summary>
     public string? Place => (City, Country ?? CountryCode) switch
@@ -40,7 +45,9 @@ internal sealed record GeoInfo(
         Region ?? other.Region,
         City ?? other.City,
         Asn ?? other.Asn,
-        Organization ?? other.Organization);
+        Organization ?? other.Organization,
+        Latitude ?? other.Latitude,
+        Longitude ?? other.Longitude);
 }
 
 /// <summary>
@@ -199,6 +206,7 @@ internal sealed unsafe class GeoDatabase : IDisposable
     {
         string? countryCode = null, country = null, region = null, city = null, organization = null;
         long? asn = null;
+        double? latitude = null, longitude = null;
 
         var cursor = offset;
         var (type, size, c) = Header(Locate(ref cursor));
@@ -223,6 +231,15 @@ internal sealed unsafe class GeoDatabase : IDisposable
                     break;
                 case "subdivisions":
                     region = FirstPlaceName(value);
+                    break;
+                case "location":
+                    (latitude, longitude) = CoordinatesAt(value);
+                    break;
+                case "latitude":
+                    latitude = DoubleAt(value);
+                    break;
+                case "longitude":
+                    longitude = DoubleAt(value);
                     break;
                 case "autonomous_system_number":
                     asn = (long?)NumberAt(value);
@@ -251,7 +268,45 @@ internal sealed unsafe class GeoDatabase : IDisposable
             }
         }
 
-        return new GeoInfo(countryCode, country, region, city, asn, organization);
+        return new GeoInfo(countryCode, country, region, city, asn, organization, latitude, longitude);
+    }
+
+    /// <summary>GeoIP2's <c>{ latitude, longitude, accuracy_radius… }</c>.</summary>
+    private (double?, double?) CoordinatesAt(long p)
+    {
+        var (type, size, c) = Header(p);
+        if (type != TypeMap)
+            return (null, null);
+
+        double? latitude = null, longitude = null;
+        for (var i = 0; i < size; i++)
+        {
+            var key = StringAt(Locate(ref c));
+            var value = Locate(ref c);
+            if (key == "latitude")
+                latitude = DoubleAt(value);
+            else if (key == "longitude")
+                longitude = DoubleAt(value);
+        }
+
+        return (latitude, longitude);
+    }
+
+    /// <summary>A double (8 bytes, big-endian) or float; IPinfo stores coordinates as strings.</summary>
+    private double? DoubleAt(long p)
+    {
+        var (type, size, payload) = Header(p);
+        switch (type)
+        {
+            case TypeDouble when payload + 8 <= _length:
+                return BinaryPrimitives.ReadDoubleBigEndian(new ReadOnlySpan<byte>(_base + payload, 8));
+            case TypeFloat when payload + 4 <= _length:
+                return BinaryPrimitives.ReadSingleBigEndian(new ReadOnlySpan<byte>(_base + payload, 4));
+            case TypeString:
+                return double.TryParse(Utf8(payload, size), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var d) ? d : null;
+            default:
+                return null;
+        }
     }
 
     /// <summary>A GeoIP2 place: <c>{ iso_code, names: { en: … } }</c>.</summary>

@@ -46,7 +46,7 @@
                 </Button>
               </Grid>
 
-              <WrapPanel ItemSpacing="8" LineSpacing="8">
+              <WrapPanel ItemSpacing="8" LineSpacing="8" IsVisible="{Binding HasProcess}">
                 <Button Theme="{StaticResource SoftButton}" Command="{Binding OpenProcessCommand}" IsEnabled="{Binding CanOpenProcess}"
                         ToolTip.Tip="The process's details and actions on the Processes page">
                   <StackPanel Orientation="Horizontal" Spacing="6">
@@ -62,7 +62,7 @@
                   </StackPanel>
                 </ToggleButton>
                 <Button Theme="{StaticResource SoftButton}" Command="{Binding CopyCommand}" ToolTip.Tip="{Binding CopyText}"
-                        AutomationProperties.Name="{Binding CopyText}" IsVisible="{Binding !IsProcess}">
+                        AutomationProperties.Name="{Binding CopyText}" IsVisible="{Binding CanCopy}">
                   <ctl:Icon Width="14" Height="14" Data="{StaticResource IconCopy}" />
                 </Button>
                 <Button Theme="{StaticResource DangerButton}" Command="{Binding CloseConnectionCommand}" IsVisible="{Binding CanCloseConnection}"
@@ -75,9 +75,9 @@
               </WrapPanel>
 
               <Button Theme="{StaticResource LinkButton}" Command="{Binding ShowConnectionsCommand}" HorizontalAlignment="Left"
-                      ToolTip.Tip="Everything this process has connected to while monitored">
+                      ToolTip.Tip="Everything recorded, in History">
                 <StackPanel Orientation="Horizontal" Spacing="4">
-                  <TextBlock Text="All of this process's connections" FontSize="{StaticResource SlTextSmall}" VerticalAlignment="Center" />
+                  <TextBlock Text="{Binding ShowConnectionsText}" FontSize="{StaticResource SlTextSmall}" VerticalAlignment="Center" />
                   <ctl:Icon Width="14" Height="14" Data="{StaticResource IconChevronRight}" />
                 </StackPanel>
               </Button>
@@ -222,6 +222,9 @@
                        IsChecked="{Binding IsListeningView}" ToolTip.Tip="Ports processes wait on for others to connect" />
           <RadioButton Theme="{StaticResource SegmentButton}" GroupName="NetworkTab" Content="Processes"
                        IsChecked="{Binding IsProcessesView}" ToolTip.Tip="Each process's connections and traffic" />
+          <RadioButton Theme="{StaticResource SegmentButton}" GroupName="NetworkTab" Content="Map"
+                       IsChecked="{Binding IsMapView}" IsVisible="{Binding HasMap}"
+                       ToolTip.Tip="Where the other ends are, from the location database" />
         </StackPanel>
 
         <TextBox Grid.Column="1" x:Name="Search" VerticalContentAlignment="Center"
@@ -549,6 +552,83 @@
                   </ItemsControl>
                 </Grid>
               </ScrollViewer>
+
+              <!-- ========== Map: places on the world, then the same places as a list ========== -->
+              <Grid RowDefinitions="2*,Auto,Auto,1*" IsVisible="{Binding IsMapView}">
+                <net:WorldMap Places="{Binding MapPlaces}" Countries="{Binding MapCountries}" Home="{Binding MapHome}"
+                              Version="{Binding MapVersion}" MinHeight="220"
+                              AutomationProperties.Name="World map of connections" />
+
+                <!-- Legend: shapes and words, never colour alone. -->
+                <Border Grid.Row="1" Padding="24,10" BorderBrush="{StaticResource SlBorder}" BorderThickness="0,1,0,0">
+                  <StackPanel Spacing="6">
+                    <WrapPanel ItemSpacing="18" LineSpacing="6">
+                      <StackPanel Orientation="Horizontal" Spacing="6">
+                        <Ellipse Width="10" Height="10" Fill="{StaticResource SlAccent}" VerticalAlignment="Center" />
+                        <Line StartPoint="0,0" EndPoint="22,0" Stroke="{StaticResource SlAccentLine}" StrokeThickness="1.5" VerticalAlignment="Center" />
+                        <TextBlock Classes="caption" Text="Outgoing: solid line" VerticalAlignment="Center" />
+                      </StackPanel>
+                      <StackPanel Orientation="Horizontal" Spacing="6">
+                        <Ellipse Width="10" Height="10" Fill="{StaticResource SlSeries2}" VerticalAlignment="Center" />
+                        <Line StartPoint="0,0" EndPoint="22,0" Stroke="{StaticResource SlSeries2}" StrokeThickness="1.5" StrokeDashArray="3,2" VerticalAlignment="Center" />
+                        <TextBlock Classes="caption" Text="Incoming: dashed line" VerticalAlignment="Center" />
+                      </StackPanel>
+                      <StackPanel Orientation="Horizontal" Spacing="6">
+                        <Ellipse Width="10" Height="10" Fill="{StaticResource SlAccent}" Stroke="{StaticResource SlSeries2}" StrokeThickness="2" VerticalAlignment="Center" />
+                        <TextBlock Classes="caption" Text="Both: ringed" VerticalAlignment="Center" />
+                      </StackPanel>
+                      <TextBlock Classes="caption" Text="Scroll to zoom, drag to move, double-click to reset" VerticalAlignment="Center" />
+                    </WrapPanel>
+                    <TextBlock Classes="caption" Text="{Binding MapLegend}" TextWrapping="Wrap" />
+                    <TextBlock Classes="caption" Text="{Binding MapNote}" TextWrapping="Wrap" IsVisible="{Binding HasMapNote}" />
+                    <TextBlock Classes="caption" Text="{Binding MapAttribution}" TextWrapping="Wrap" />
+                  </StackPanel>
+                </Border>
+
+                <Border Grid.Row="2" Classes="table-header" BorderThickness="0,1,0,1">
+                  <Grid ColumnDefinitions="*,110,96,72,96,96" ColumnSpacing="14">
+                    <TextBlock Text="Place" />
+                    <TextBlock Grid.Column="1" Text="Direction" />
+                    <TextBlock Grid.Column="2" Text="Connections" HorizontalAlignment="Right" />
+                    <TextBlock Grid.Column="3" Text="Open" HorizontalAlignment="Right" />
+                    <TextBlock Grid.Column="4" Text="Processes" HorizontalAlignment="Right" />
+                    <TextBlock Grid.Column="5" Text="Traffic" HorizontalAlignment="Right" />
+                  </Grid>
+                </Border>
+
+                <ItemsControl Grid.Row="3" ItemsSource="{Binding MapPlaces}" AutomationProperties.Name="Places">
+                  <ItemsControl.Template>
+                    <ControlTemplate>
+                      <ScrollViewer HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
+                        <ItemsPresenter Name="PART_ItemsPresenter" ItemsPanel="{TemplateBinding ItemsPanel}" />
+                      </ScrollViewer>
+                    </ControlTemplate>
+                  </ItemsControl.Template>
+                  <ItemsControl.ItemsPanel>
+                    <ItemsPanelTemplate>
+                      <VirtualizingStackPanel />
+                    </ItemsPanelTemplate>
+                  </ItemsControl.ItemsPanel>
+                  <ItemsControl.ItemTemplate>
+                    <DataTemplate x:DataType="net:MapPlace">
+                      <Button Theme="{StaticResource SelectableRow}" Padding="24,5" Classes.selected="{Binding IsSelected}"
+                              Command="{Binding SelectCommand}" AutomationProperties.Name="{Binding AccessibleName}">
+                        <Grid ColumnDefinitions="*,110,96,72,96,96" ColumnSpacing="14">
+                          <StackPanel Spacing="1" VerticalAlignment="Center">
+                            <TextBlock Classes="cell name" Text="{Binding Name}" />
+                            <TextBlock Classes="caption" Text="{Binding Caption}" TextTrimming="CharacterEllipsis" ToolTip.Tip="{Binding Caption}" />
+                          </StackPanel>
+                          <TextBlock Grid.Column="1" Classes="cell" Text="{Binding DirectionText}" />
+                          <TextBlock Grid.Column="2" Classes="number" Text="{Binding CountText}" />
+                          <TextBlock Grid.Column="3" Classes="number" Text="{Binding OpenText}" />
+                          <TextBlock Grid.Column="4" Classes="number" Text="{Binding ProcessesText}" ToolTip.Tip="{Binding ProcessName}" />
+                          <TextBlock Grid.Column="5" Classes="number" Text="{Binding BytesText}" />
+                        </Grid>
+                      </Button>
+                    </DataTemplate>
+                  </ItemsControl.ItemTemplate>
+                </ItemsControl>
+              </Grid>
 
               <TextBlock Classes="caption" Margin="24,56,24,24" HorizontalAlignment="Center" VerticalAlignment="Top"
                          Text="{Binding EmptyText}" IsVisible="{Binding IsEmpty}" TextWrapping="Wrap" />

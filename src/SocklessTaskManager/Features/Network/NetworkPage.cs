@@ -14,6 +14,7 @@ internal enum NetworkTab
     History,
     Listening,
     Processes,
+    Map,
 }
 
 /// <summary>
@@ -202,6 +203,15 @@ public sealed class NetworkPage : ObservableObject
         set => SetView(value, NetworkTab.Processes);
     }
 
+    public bool IsMapView
+    {
+        get => _view == NetworkTab.Map;
+        set => SetView(value, NetworkTab.Map);
+    }
+
+    /// <summary>A location database is installed, so connections can be put on the map.</summary>
+    public bool HasMap => _geo.Location is not null;
+
     /// <summary>Connections or History: the connection table is on screen.</summary>
     public bool IsConnectionTable => _view is NetworkTab.Connections or NetworkTab.History;
 
@@ -215,6 +225,7 @@ public sealed class NetworkPage : ObservableObject
         OnPropertyChanged(nameof(IsHistoryView));
         OnPropertyChanged(nameof(IsListeningView));
         OnPropertyChanged(nameof(IsProcessesView));
+        OnPropertyChanged(nameof(IsMapView));
         OnPropertyChanged(nameof(IsConnectionTable));
         OnPropertyChanged(nameof(Columns));
         OnPropertyChanged(nameof(SearchHint));
@@ -262,6 +273,7 @@ public sealed class NetworkPage : ObservableObject
     {
         NetworkTab.Listening => "Search, or port:1-1024 -svchost",
         NetworkTab.Processes => "Search, or country:SE host:cloudfront",
+        NetworkTab.Map => "Search, or process:chrome -org:Google",
         _ => "Search, or port:443 country:SE -svchost",
     };
 
@@ -344,6 +356,7 @@ public sealed class NetworkPage : ObservableObject
         (NetworkTab.Connections, _) => _hasSnapshot ? "No open connections." : "Reading the connection tables…",
         (NetworkTab.History, _) => "Nothing recorded yet.",
         (NetworkTab.Listening, _) => "No listening ports.",
+        (NetworkTab.Map, _) => "Nothing to put on the map yet: only connections to internet addresses have a place.",
         _ => "No process has used the network yet.",
     };
 
@@ -505,6 +518,9 @@ public sealed class NetworkPage : ObservableObject
                 break;
             case NetworkTab.Listening:
                 RenderListeners(search, resort);
+                break;
+            case NetworkTab.Map:
+                RenderMap(search, resort);
                 break;
             default:
                 RenderProcesses(search, resort);
@@ -962,6 +978,7 @@ public sealed class NetworkPage : ObservableObject
     private FilterGroup[] _historyFilters = [];
     private FilterGroup[] _listenerFilters = [];
     private FilterGroup[] _processFilters = [];
+    private FilterGroup[] _mapFilters = [];
 
     /// <summary>The chip groups for the view on screen.</summary>
     public IReadOnlyList<FilterGroup> Filters => _view switch
@@ -969,6 +986,7 @@ public sealed class NetworkPage : ObservableObject
         NetworkTab.Connections => _connectionFilters,
         NetworkTab.History => _historyFilters,
         NetworkTab.Listening => _listenerFilters,
+        NetworkTab.Map => _mapFilters,
         _ => _processFilters,
     };
 
@@ -977,7 +995,7 @@ public sealed class NetworkPage : ObservableObject
     public ICommand ClearFiltersCommand { get; }
 
     private IEnumerable<FilterGroup> AllFilters =>
-        _connectionFilters.Concat(_historyFilters).Concat(_listenerFilters).Concat(_processFilters).Distinct();
+        _connectionFilters.Concat(_historyFilters).Concat(_listenerFilters).Concat(_processFilters).Concat(_mapFilters).Distinct();
 
     private void CreateFilters()
     {
@@ -1049,6 +1067,7 @@ public sealed class NetworkPage : ObservableObject
         _historyFilters = [status, protocol, direction, remote, traffic];
         _listenerFilters = [listenerProtocol, reach, listenerProcess];
         _processFilters = [running, activity];
+        _mapFilters = [status, protocol, direction, traffic];
 
         foreach (var group in AllFilters)
         {
@@ -1165,6 +1184,7 @@ public sealed class NetworkPage : ObservableObject
             ConnectionRow c => (DetailsKind.Connection, c.Info!.Process),
             ListenerRow l => (DetailsKind.Listener, l.Info!.Process),
             ProcessTrafficRow p => (DetailsKind.Process, p.Process),
+            MapPlace => (DetailsKind.Place, default(ProcessRef)),
             _ => throw new UnreachableException(),
         };
 
@@ -1209,6 +1229,9 @@ public sealed class NetworkPage : ObservableObject
                 break;
             case ProcessTrafficRow p:
                 FillProcessDetails(details, p);
+                break;
+            case MapPlace m:
+                FillPlaceDetails(details, m);
                 break;
         }
 
@@ -1474,6 +1497,13 @@ public sealed class NetworkPage : ObservableObject
 
     private void ShowConnections()
     {
+        if (_selected is MapPlace place)
+        {
+            IsHistoryView = true;
+            SearchText = place.Search;
+            return;
+        }
+
         if (_details is not { } details)
             return;
         var pid = details.Process.Id;
@@ -1600,6 +1630,7 @@ public sealed class NetworkPage : ObservableObject
             NetworkTab.Connections => "connections",
             NetworkTab.History => "connection history",
             NetworkTab.Listening => "listening ports",
+            NetworkTab.Map => "connections on the map",
             _ => "network by process",
         };
         return $"{what} {DateTime.Now.ToString("yyyy-MM-dd HHmm", CultureInfo.InvariantCulture)}.csv";
@@ -1627,11 +1658,11 @@ public sealed class NetworkPage : ObservableObject
         count = 0;
         switch (_view)
         {
-            case NetworkTab.Connections or NetworkTab.History:
+            case NetworkTab.Connections or NetworkTab.History or NetworkTab.Map:
                 csv.Append("Process,PID,Path,Services,Protocol,Direction,Local address,Local port,Remote address,Remote port,Host,Host source,Country,Place,Network,State,Open,Opened,First seen,Last seen,Sent bytes,Received bytes,Retransmits\r\n");
                 foreach (var c in _connections.Values.OrderBy(c => c.FirstSeen))
                 {
-                    if (_view == NetworkTab.Connections && !c.IsOpen || !Matches(c, search))
+                    if (_view == NetworkTab.Connections && !c.IsOpen || _view == NetworkTab.Map && Place(c) is null || !Matches(c, search))
                         continue;
                     var p = _processes.GetValueOrDefault(c.Process);
                     var host = _hosts.Get(c.Key.Remote);
@@ -1897,12 +1928,218 @@ public sealed class NetworkPage : ObservableObject
 
     private void OnGeoChanged()
     {
+        OnPropertyChanged(nameof(HasMap));
+        if (_view == NetworkTab.Map && !HasMap)
+            IsConnectionsView = true;
         foreach (var row in _connectionRows.Values)
             row.Info = null;
         OnPropertyChanged(nameof(ShowGeoHint));
         if (_isShown)
             Render(resort: true);
     }
+
+    // ---------- Map ----------
+
+    private readonly Dictionary<string, MapPlace> _places = [];
+    private IReadOnlyDictionary<string, int> _mapCountries = new Dictionary<string, int>();
+    private int _mapVersion;
+    private string _mapNote = string.Empty;
+
+    /// <summary>Places, busiest first; the map draws them and the list below it shows them.</summary>
+    public ObservableCollection<MapPlace> MapPlaces { get; } = [];
+
+    /// <summary>Connections by country code, for shading.</summary>
+    public IReadOnlyDictionary<string, int> MapCountries
+    {
+        get => _mapCountries;
+        private set => Set(ref _mapCountries, value);
+    }
+
+    /// <summary>Bumped each render, so the map redraws places changed in place.</summary>
+    public int MapVersion
+    {
+        get => _mapVersion;
+        private set => Set(ref _mapVersion, value);
+    }
+
+    /// <summary>Where lines start: this computer's Windows region, if the map knows it.</summary>
+    public string? MapHome { get; } =
+        WorldMapData.Labels.ContainsKey(RegionInfo.CurrentRegion.TwoLetterISORegionName) ? RegionInfo.CurrentRegion.TwoLetterISORegionName : null;
+
+    public string MapLegend => MapHome is null
+        ? "Dots are where the other ends are, sized by connections; countries are shaded by how many end there."
+        : $"Lines start at {RegionInfo.CurrentRegion.EnglishName}, this computer's Windows region, not a measured location. Dots are where the other ends are, sized by connections; countries are shaded by how many end there.";
+
+    /// <summary>What couldn't be placed, and how precise the places are.</summary>
+    public string MapNote
+    {
+        get => _mapNote;
+        private set
+        {
+            if (Set(ref _mapNote, value))
+                OnPropertyChanged(nameof(HasMapNote));
+        }
+    }
+
+    public bool HasMapNote => _mapNote.Length > 0;
+
+    public string MapAttribution => IsDbIp()
+        ? $"{GeoLocator.Attribution} Map outline: Natural Earth."
+        : "Map outline: Natural Earth.";
+
+    /// <summary>Where the database puts a connection's other end: a city with coordinates, or a country. Null for private addresses or unknown ones.</summary>
+    private (string Key, string Name, string Caption, double Longitude, double Latitude, string? Country, bool IsCountry, string Search)? Place(ConnectionInfo c)
+    {
+        if (_geo.Lookup(c.Key.Remote) is not { } geo)
+            return null;
+
+        var country = geo.Country ?? geo.CountryCode ?? "Unknown country";
+        if (geo is { HasCoordinates: true })
+        {
+            // About 10 km: one dot per city, not per street.
+            var latitude = Math.Round(geo.Latitude!.Value, 1);
+            var longitude = Math.Round(geo.Longitude!.Value, 1);
+            var name = geo.City ?? geo.Region ?? country;
+            var search = geo.CountryCode is { } code ? $"country:{code} \"{name}\"" : $"\"{name}\"";
+            return ($"ll:{latitude.ToString(CultureInfo.InvariantCulture)},{longitude.ToString(CultureInfo.InvariantCulture)}",
+                name, geo.City is null ? country : $"{(geo.Region is { } region && region != geo.City ? region + ", " : string.Empty)}{country}",
+                longitude, latitude, geo.CountryCode, false, search);
+        }
+
+        if (geo.CountryCode is { } cc && WorldMapData.Labels.TryGetValue(cc, out var label))
+            return ($"cc:{cc}", country, "Whole country: the database doesn't say where in it", label.X, label.Y, cc, true, $"country:{cc}");
+
+        return null;
+    }
+
+    private void RenderMap(NetworkSearch search, bool resort)
+    {
+        var groups = new Dictionary<string, (MapPlace Place, HashSet<ProcessRef> Processes)>();
+        var countries = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+        int unplaced = 0, matching = 0, countryOnly = 0;
+        foreach (var c in _connections.Values)
+        {
+            if (!c.Key.Remote.IsRoutable || !Matches(c, search))
+                continue;
+            matching++;
+            if (Place(c) is not { } p)
+            {
+                unplaced++;
+                continue;
+            }
+
+            if (!groups.TryGetValue(p.Key, out var group))
+            {
+                if (!_places.TryGetValue(p.Key, out var place))
+                    _places[p.Key] = place = new MapPlace(p.Key, Select);
+                place.Connections.Clear();
+                place.Count = place.Open = place.Incoming = place.Outgoing = 0;
+                place.Bytes = 0;
+                (place.Name, place.Caption, place.Longitude, place.Latitude, place.CountryCode, place.IsCountry, place.Search) =
+                    (p.Name, p.Caption, p.Longitude, p.Latitude, p.Country, p.IsCountry, p.Search);
+                groups[p.Key] = group = (place, []);
+            }
+
+            var m = group.Place;
+            m.Connections.Add(c);
+            m.Count++;
+            if (c.IsOpen)
+                m.Open++;
+            if (c.IsInbound)
+                m.Incoming++;
+            else
+                m.Outgoing++;
+            m.Bytes += c.Sent + c.Received;
+            group.Processes.Add(c.Process);
+            if (p.Country is { } code)
+                countries[code] = countries.GetValueOrDefault(code) + 1;
+            if (p.IsCountry)
+                countryOnly++;
+        }
+
+        foreach (var (place, processes) in groups.Values)
+        {
+            place.DirectionText = (place.Incoming, place.Outgoing) switch
+            {
+                (0, _) => "Outgoing",
+                (_, 0) => "Incoming",
+                _ => "Both ways",
+            };
+            place.CountText = Format.Number(place.Count);
+            place.OpenText = Format.Number(place.Open);
+            place.ProcessesText = Format.Number(processes.Count);
+            place.BytesText = place.Bytes > 0 ? Format.Bytes(place.Bytes) : "—";
+            place.ProcessName = processes.Count == 1 ? ProcessName(processes.First()) : $"{Format.Number(processes.Count)} processes";
+        }
+
+        var all = groups.Values.Select(g => g.Place).ToList();
+        var wanted = Rank(all, p => p.Key, _places, MapPlaces, resort,
+            list => list.OrderByDescending(p => p.Count).ThenBy(p => p.Name, StringComparer.CurrentCultureIgnoreCase));
+        Keep(_places, wanted, p => p.Key);
+        Reconcile(MapPlaces, wanted);
+        MapCountries = countries;
+        MapVersion++;
+        Note(all.Count, wanted.Count);
+
+        var notes = new List<string>();
+        if (unplaced > 0)
+            notes.Add($"{Format.Number(unplaced)} of {Format.Number(matching)} internet connections aren't in the database");
+        if (countryOnly > 0)
+            notes.Add($"{Format.Number(countryOnly)} are placed by country only; a city database places them closer");
+        MapNote = notes.Count == 0 ? string.Empty : string.Join("; ", notes) + ".";
+        OnPropertyChanged(nameof(MapAttribution));
+    }
+
+    private void FillPlaceDetails(NetworkDetails details, MapPlace place)
+    {
+        details.Title = place.Name;
+        details.Subtitle = place.Caption;
+        details.StatusText = place.Open > 0 ? $"{Format.Number(place.Open)} open" : "None open";
+        details.IsSuccess = place.Open > 0;
+        details.IsWarning = false;
+
+        var owners = place.Connections
+            .Select(c => _geo.Lookup(c.Key.Remote)?.Network)
+            .Where(n => n is not null)
+            .GroupBy(n => n!)
+            .OrderByDescending(g => g.Count())
+            .Select(g => g.Key)
+            .ToList();
+        var processes = place.Connections.Select(c => ProcessName(c.Process)).Distinct().Order(StringComparer.CurrentCultureIgnoreCase).ToList();
+
+        var facts = new List<NetworkFact>
+        {
+            new("Connections", $"{Format.Number(place.Count)} recorded, {Format.Number(place.Open)} open now"),
+            new("Direction", $"{Format.Number(place.Outgoing)} outgoing, {Format.Number(place.Incoming)} incoming"),
+            new("Processes", processes.Count > 8 ? $"{string.Join(", ", processes.Take(8))} and {processes.Count - 8} more" : string.Join(", ", processes)),
+            new("Addresses", Format.Number(place.Connections.Select(c => c.Key.Remote).Distinct().Count())),
+        };
+        if (owners.Count > 0)
+            facts.Add(new("Networks", owners.Count > 4 ? $"{string.Join(Environment.NewLine, owners.Take(4))}{Environment.NewLine}and {owners.Count - 4} more" : string.Join(Environment.NewLine, owners)));
+        if (place.Bytes > 0)
+            facts.Add(new("Traffic", Format.Bytes(place.Bytes)));
+        facts.Add(new("Position", place.IsCountry
+            ? "Country only: the database doesn't say where in it"
+            : $"{place.Latitude.ToString("0.0", CultureInfo.CurrentCulture)}°, {place.Longitude.ToString("0.0", CultureInfo.CurrentCulture)}° (approximate)"));
+        details.Facts = facts;
+        details.Attribution = IsDbIp() ? GeoLocator.Attribution : string.Empty;
+        details.CanCloseConnection = false;
+        details.CloseHint = string.Empty;
+
+        details.RelatedTitle = "Connections";
+        var lines = new List<RelatedLine>();
+        foreach (var c in place.Connections)
+        {
+            var line = Line($"c:{c.Id}", ProcessName(c.Process), $"ip:{c.Key.Remote}");
+            line.Secondary = $"{_hosts.Get(c.Key.Remote)?.Name ?? c.Key.Remote.ToString()} · {NetworkText.Protocol(c.Key)} {c.Key.RemotePort.ToString(CultureInfo.InvariantCulture)} · {TcpStates.Describe(c)}";
+            line.Value = c.Sent + c.Received > 0 ? Format.Bytes(c.Sent + c.Received) : NetworkText.When(c.IsOpen ? c.FirstSeen : c.LastSeen);
+            line.Weight = c.IsOpen ? double.MaxValue : c.LastSeen.Ticks;
+            lines.Add(line);
+        }
+
+        SetRelated(details, lines);
+    }
+
 
     // ---------- Helpers ----------
 

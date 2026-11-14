@@ -80,6 +80,9 @@ src/SocklessTaskManager/
                         - Geo data never ships. GeoDatabase is a hand-written, memory-mapped .mmdb reader
                           (DB-IP, GeoLite2, IPinfo); GeoLocator downloads DB-IP Lite or imports a file into
                           %LOCALAPPDATA%\Sockless Task Manager\GeoIP. Show DB-IP's attribution where its data is shown.
+                        - The Map view (only with a location database) draws WorldMap.bin, Natural Earth country
+                          outlines and label points embedded as a resource (tools/New-WorldMap.ps1 rebuilds it). It's
+                          not IP data; city coordinates come from the database, country dots from the label points.
                         - Monitoring runs only while the page is shown, or in the background for watched process
                           names or everything (network.ini); otherwise it costs nothing.
     Updates/            not a page: the top bar's update offer. Reads the latest tag from GitHub's /releases/latest
