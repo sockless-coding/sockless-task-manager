@@ -194,9 +194,13 @@ public sealed class ProcessDetails : ObservableObject
         HeapDumpCommand = new RelayCommand(() => owner.CreateDump(Key, heapOnly: true));
         AllProcessorsCommand = new RelayCommand(SelectAllProcessors);
         DismissNoticeCommand = new RelayCommand(ClearNotice);
+        OpenMemoryMapCommand = new RelayCommand(() => owner.OpenMemoryMap(this));
     }
 
     internal ProcessKey Key { get; }
+
+    /// <summary>Opens the memory makeup page: private data, DLLs and mapped files.</summary>
+    public ICommand OpenMemoryMapCommand { get; }
 
     public string Name { get; }
 

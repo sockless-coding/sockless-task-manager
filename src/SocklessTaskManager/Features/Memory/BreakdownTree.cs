@@ -1,5 +1,6 @@
 using System.Globalization;
 using Sockless.TaskManager.Core;
+using Sockless.TaskManager.Core.Interop;
 
 namespace Sockless.TaskManager.Features.Memory;
 
@@ -8,7 +9,7 @@ namespace Sockless.TaskManager.Features.Memory;
 /// level it shows, built fresh from the latest sample each tick:
 /// <code>
 /// Physical memory
-///   In use      Processes › process group › process › programs and DLLs | mapped files
+///   In use      Processes › process group › process (opens it on the Processes page)
 ///               Compressed memory
 ///               Shared files and other › files mapped by processes
 ///               Kernel and drivers › non-paged | paged pool › tag › drivers with that tag
@@ -36,8 +37,6 @@ internal static class BreakdownTree
         ["inuse"] => InUse(s),
         ["inuse", "processes"] => Processes(s),
         ["inuse", "processes", var group] when group.StartsWith("g:", StringComparison.Ordinal) => Group(s, group[2..]),
-        ["inuse", "processes", .., var pid] when ProcessId(pid) is { } id => Process(s, id, scans),
-        ["inuse", "processes", .., var pid, var files] when ProcessId(pid) is { } id => ProcessFiles(s, id, files, scans),
         ["inuse", "shared"] => SharedFiles(s, scans),
         ["inuse", "kernel"] => Kernel(s),
         ["inuse", "kernel", "drivers"] => Drivers(s),
@@ -194,7 +193,7 @@ internal static class BreakdownTree
 
         return new Level(
             members[0].Name,
-            $"{Format.Number(members.Count)} processes running {members[0].Name}. Select one to see what its memory is made of.",
+            $"{Format.Number(members.Count)} processes running {members[0].Name}. Select one to open it in Processes.",
             Sum(members, p => p.PrivateWorkingSet),
             [.. members.Select(p => ProcessEntry(p, $"PID {p.Id.ToString(CultureInfo.CurrentCulture)}"))]);
     }
@@ -206,98 +205,16 @@ internal static class BreakdownTree
                 ? $"{Format.Bytes(p.Commit)} committed"
                 : $"PID {p.Id.ToString(CultureInfo.CurrentCulture)} · {Format.Bytes(p.Commit)} committed",
             CanOpen = true,
+            Process = (p.Id, p.CreateTime),
         };
-
-    private static Level? Process(BreakdownSample s, int id, Scans scans)
-    {
-        if (s.Processes is not { } processes)
-            return Pending("Process", 0);
-        if (processes.FindIndex(p => p.Id == id) is var index && index < 0)
-            return null;
-
-        var process = processes[index];
-        var key = $"space:{id.ToString(CultureInfo.InvariantCulture)}";
-        var scan = scans.Get(key, () => AddressSpace.Scan(id));
-        var level = new Level(
-            process.Name,
-            $"PID {id.ToString(CultureInfo.CurrentCulture)}. Everything this process has in RAM, including DLLs and files other processes may share. "
-            + $"Its private part, {Format.Bytes(process.PrivateWorkingSet)}, is what it adds under Processes.",
-            process.WorkingSet,
-            []) { ScanKey = key };
-
-        if (scan.Result is not { } space)
-            return WithScanStatus(level, scan, "Reading the address space…");
-
-        return WithScanStatus(level with
-        {
-            Bytes = space.WorkingSetBytes,
-            Entries =
-            [
-                new("private", "Private data", space.PrivateBytes)
-                {
-                    Note = "Heaps, stacks and other memory only this process uses",
-                },
-                new("images", "Programs and DLLs", space.ImageBytes)
-                {
-                    Note = $"{Format.Number(space.Images.Count)} EXE and DLL files",
-                    CanOpen = space.Images.Count > 0,
-                },
-                new("mapped", "Mapped files", space.MappedFileBytes)
-                {
-                    Note = $"{Format.Number(space.MappedFiles.Count)} data files mapped into memory",
-                    CanOpen = space.MappedFiles.Count > 0,
-                },
-                new("sharedmemory", "Shared memory", space.SharedMemoryBytes)
-                {
-                    Note = "Sections shared with other processes",
-                },
-                new("other", "Other", space.OtherBytes)
-                {
-                    Note = "Pages outside the address space map",
-                    Optional = true,
-                },
-            ],
-        }, scan, string.Empty);
-    }
-
-    private static Level? ProcessFiles(BreakdownSample s, int id, string kind, Scans scans)
-    {
-        if (kind is not ("images" or "mapped"))
-            return null;
-        if (s.Processes is not { } processes)
-            return Pending("Files", 0);
-        if (processes.FindIndex(p => p.Id == id) is var index && index < 0)
-            return null;
-
-        var name = processes[index].Name;
-        var key = $"space:{id.ToString(CultureInfo.InvariantCulture)}";
-        var scan = scans.Get(key, () => AddressSpace.Scan(id));
-        var images = kind == "images";
-        var level = new Level(
-            images ? "Programs and DLLs" : "Mapped files",
-            images
-                ? $"EXE and DLL files loaded by {name}, by how much of each is in RAM. Most of these pages are shared with every other process that loads the same file."
-                : $"Data files {name} has mapped into memory, by how much of each is in RAM.",
-            0,
-            []) { ScanKey = key };
-
-        if (scan.Result is not { } space)
-            return WithScanStatus(level, scan, "Reading the address space…");
-
-        var files = images ? space.Images : space.MappedFiles;
-        return WithScanStatus(level with
-        {
-            Bytes = Sum(files, f => f.ResidentBytes),
-            Entries = [.. files.Select(f => FileEntry(f, showProcesses: false))],
-        }, scan, string.Empty);
-    }
 
     private static Level SharedFiles(BreakdownSample s, Scans scans)
     {
         if (Split(s) is not { } parts || s.Processes is not { } processes)
             return Pending("Shared files and other", 0);
 
-        var scan = scans.Get("shared", () => AddressSpace.ScanAll(processes));
+        var ids = processes.Where(p => p.Id != 4 && p.Name != ProcessMemory.CompressionName).Select(p => p.Id).ToList();
+        var scan = scans.Get("shared", () => AddressSpace.ScanAll(ids));
         var level = new Level(
             "Shared files and other",
             "What In use holds beyond private process memory, compression, the kernel and the file cache: DLLs and files shared between processes, "
@@ -314,18 +231,16 @@ internal static class BreakdownTree
             : string.Empty;
         return WithScanStatus(level with
         {
-            Entries = [.. shared.Files.Select(f => FileEntry(f, showProcesses: true))],
+            Entries = [.. shared.Files.Select(f => FileEntry(f))],
         }, scan, status);
     }
 
-    private static Entry FileEntry(FileUse file, bool showProcesses)
+    private static Entry FileEntry(FileUse file)
     {
         var folder = Path.GetDirectoryName(file.Path) ?? string.Empty;
         return new Entry(file.Path, Path.GetFileName(file.Path), file.ResidentBytes)
         {
-            Note = !showProcesses ? folder
-                : file.Processes == 1 ? $"1 process · {folder}"
-                : $"{Format.Number(file.Processes)} processes · {folder}",
+            Note = file.Processes == 1 ? $"1 process · {folder}" : $"{Format.Number(file.Processes)} processes · {folder}",
             ToolTip = file.Path,
         };
     }
@@ -548,12 +463,6 @@ internal static class BreakdownTree
 
         return level with { Status = $"Snapshot taken at {scan.CompletedAt.ToString("T", CultureInfo.CurrentCulture)}.{message}" };
     }
-
-    private static int? ProcessId(string key) =>
-        key.StartsWith("p:", StringComparison.Ordinal)
-        && int.TryParse(key.AsSpan(2), NumberStyles.None, CultureInfo.InvariantCulture, out var id)
-            ? id
-            : null;
 
     private static ulong Sum<T>(IEnumerable<T> items, Func<T, ulong> bytes)
     {

@@ -2,6 +2,7 @@ using System.Collections.ObjectModel;
 using System.Windows.Input;
 using Avalonia.Media;
 using Avalonia.Threading;
+using Sockless.TaskManager.Controls;
 using Sockless.TaskManager.Core;
 using Sockless.TaskManager.Core.Interop;
 
@@ -34,6 +35,7 @@ public sealed class MemoryBreakdown : ObservableObject, IDisposable
     private BreakdownSample? _pending;
 
     // UI thread.
+    private readonly Navigator _navigator;
     private readonly Scans _scans = new();
     private readonly List<(string Key, string Name)> _path = [];
     private BreakdownSample? _latest;
@@ -52,8 +54,9 @@ public sealed class MemoryBreakdown : ObservableObject, IDisposable
     private IReadOnlyList<CompositionSegment> _composition = [];
     private bool _isEmpty;
 
-    internal MemoryBreakdown()
+    internal MemoryBreakdown(Navigator navigator)
     {
+        _navigator = navigator;
         _scans.Completed += Render;
         RefreshCommand = new RelayCommand(Refresh);
         RebuildCrumbs();
@@ -208,6 +211,12 @@ public sealed class MemoryBreakdown : ObservableObject, IDisposable
     {
         if (!row.CanOpen)
             return;
+
+        if (row.Process is { } process)
+        {
+            _navigator.ShowProcesses(new ProcessQuery(ProcessId: process.Id, CreateTime: process.CreateTime));
+            return;
+        }
 
         _path.Add((row.Key, row.Name));
         Navigated();
@@ -478,6 +487,9 @@ public sealed class BreakdownRow : ObservableObject
         private set => Set(ref _canOpen, value);
     }
 
+    /// <summary>A process: opens it on the Processes page rather than a level of its own.</summary>
+    internal (int Id, long CreateTime)? Process { get; private set; }
+
     public bool Mono
     {
         get => _mono;
@@ -514,6 +526,7 @@ public sealed class BreakdownRow : ObservableObject
         }
 
         CanOpen = entry.CanOpen;
+        Process = entry.Process;
         Mono = entry.Mono;
         ToolTip = entry.ToolTip;
     }

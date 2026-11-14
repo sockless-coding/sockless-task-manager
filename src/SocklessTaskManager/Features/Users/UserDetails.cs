@@ -7,19 +7,27 @@ namespace Sockless.TaskManager.Features.Users;
 /// <summary>A label and value in the details pane.</summary>
 public sealed record UserFact(string Label, string Value);
 
-/// <summary>One of the selected user's processes.</summary>
+/// <summary>One of the selected user's processes. Opening it shows the process on the Processes page.</summary>
 public sealed class UserProcessLine : ObservableObject
 {
     private string _cpuText = string.Empty;
     private string _memoryText = string.Empty;
 
-    internal UserProcessLine(string name, int id)
+    internal UserProcessLine(string name, int id, Action<UserProcessLine> open)
     {
         Name = name;
         IdText = id.ToString(System.Globalization.CultureInfo.CurrentCulture);
+        OpenCommand = new RelayCommand(() => open(this));
     }
 
     public string Name { get; }
+
+    public ICommand OpenCommand { get; }
+
+    public string AccessibleName => $"{Name}, PID {IdText}";
+
+    /// <summary>Which process, for life: an id can be reused once it exits.</summary>
+    internal (int Id, long CreateTime) Key { get; init; }
 
     public string IdText { get; }
 
@@ -57,13 +65,14 @@ public sealed class UserDetails : ObservableObject
     private string _message = string.Empty;
     private bool _messageIsError;
 
-    internal UserDetails(string key, bool isSession, Action close, Action disconnect, Action signOut)
+    internal UserDetails(string key, bool isSession, Action close, Action disconnect, Action signOut, Action showProcesses)
     {
         Key = key;
         IsSession = isSession;
         CloseCommand = new RelayCommand(close);
         DisconnectCommand = new RelayCommand(disconnect);
         SignOutCommand = new RelayCommand(signOut);
+        ShowProcessesCommand = new RelayCommand(showProcesses);
     }
 
     internal string Key { get; }
@@ -76,6 +85,12 @@ public sealed class UserDetails : ObservableObject
     public ICommand DisconnectCommand { get; }
 
     public ICommand SignOutCommand { get; }
+
+    /// <summary>All of them on the Processes page, filtered to this user (and session).</summary>
+    public ICommand ShowProcessesCommand { get; }
+
+    /// <summary>False for the unreadable group: the Processes page can't filter on an owner it doesn't know.</summary>
+    public bool CanShowProcesses { get; init; } = true;
 
     public ICommand RestartElevatedCommand { get; } = new RelayCommand(Elevation.Restart);
 

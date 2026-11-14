@@ -258,6 +258,22 @@
                 <ItemsControl ItemsSource="{Binding Facts}" ItemTemplate="{StaticResource FactTemplate}" />
               </StackPanel>
 
+              <!-- What its working set is made of, on its own page. Only while it runs. -->
+              <StackPanel Spacing="6" IsVisible="{Binding IsAlive}">
+                <ctl:CapsText Classes="label" Value="Memory makeup" />
+                <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                  <TextBlock Classes="caption" Text="Private data, programs and DLLs, mapped files" TextWrapping="Wrap"
+                             VerticalAlignment="Center" />
+                  <Button Grid.Column="1" Theme="{StaticResource SoftButton}" Padding="8,3" Command="{Binding OpenMemoryMapCommand}"
+                          ToolTip.Tip="What its memory is made of, and the files it has in RAM">
+                    <StackPanel Orientation="Horizontal" Spacing="4">
+                      <TextBlock Text="Open" VerticalAlignment="Center" />
+                      <ctl:Icon Width="14" Height="14" Data="{StaticResource IconChevronRight}" />
+                    </StackPanel>
+                  </Button>
+                </Grid>
+              </StackPanel>
+
               <!-- The .NET runtime's own GC counters, for a .NET process. -->
               <ContentControl Content="{Binding Managed}" ContentTemplate="{StaticResource ManagedMemoryTemplate}" />
 
@@ -355,8 +371,15 @@
 
   <Panel>
     <Grid RowDefinitions="Auto,Auto,Auto,*,Auto" Margin="{StaticResource SlContentPadding}"
-          IsEnabled="{Binding !HasConfirmation}" IsVisible="{Binding !HasManagedPage}">
+          IsEnabled="{Binding !HasConfirmation}" IsVisible="{Binding !HasSubpage}">
       <StackPanel Spacing="4" Margin="0,0,0,16">
+        <Button Theme="{StaticResource LinkButton}" Command="{Binding BackCommand}" IsVisible="{Binding HasBack}"
+                HorizontalAlignment="Left" Margin="0,0,0,6">
+          <StackPanel Orientation="Horizontal" Spacing="4">
+            <ctl:Icon Width="14" Height="14" Data="{StaticResource IconChevronLeft}" />
+            <TextBlock Classes="mono" FontSize="{StaticResource SlTextSmall}" Text="{Binding BackText}" VerticalAlignment="Center" />
+          </StackPanel>
+        </Button>
         <TextBlock Classes="page-title" Text="Processes" />
         <TextBlock Classes="secondary" Text="{Binding Summary}" />
       </StackPanel>
@@ -733,6 +756,15 @@
       <ContentControl.ContentTemplate>
         <DataTemplate x:DataType="dotnet:ManagedMemory">
           <dotnet:ManagedMemoryView />
+        </DataTemplate>
+      </ContentControl.ContentTemplate>
+    </ContentControl>
+
+    <!-- ========== The memory makeup page of the selected process, in place of the page until closed ========== -->
+    <ContentControl Margin="{StaticResource SlContentPadding}" Content="{Binding MemoryMap}">
+      <ContentControl.ContentTemplate>
+        <DataTemplate x:DataType="proc:ProcessMemoryMap">
+          <proc:ProcessMemoryMapView />
         </DataTemplate>
       </ContentControl.ContentTemplate>
     </ContentControl>

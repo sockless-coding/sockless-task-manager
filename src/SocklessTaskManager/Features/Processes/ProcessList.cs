@@ -69,6 +69,10 @@ public sealed class ProcessList : ObservableObject, IDisposable
     private bool _isEmpty;
     private ProcessDetails? _details;
     private ManagedMemory? _managedPage;
+    private ProcessMemoryMap? _memoryMap;
+    private ProcessKey? _pendingSelect;
+    private (string Title, Action Go)? _back;
+    private ICommand? _backCommand;
     private Confirmation? _confirmation;
 
     internal ProcessList()
@@ -340,6 +344,7 @@ public sealed class ProcessList : ObservableObject, IDisposable
                 previous?.Watch(false);
                 value?.Watch(_isShown);
                 ManagedPage = null;
+                MemoryMap = null;
                 OnPropertyChanged(nameof(HasDetails));
                 MarkSelection();
             }
@@ -363,10 +368,30 @@ public sealed class ProcessList : ObservableObject, IDisposable
             if (value is not null)
                 value.IsPageOpen = true;
             OnPropertyChanged(nameof(HasManagedPage));
+            OnPropertyChanged(nameof(HasSubpage));
         }
     }
 
     public bool HasManagedPage => _managedPage is not null;
+
+    /// <summary>The memory makeup page, open over the table for the selected process.</summary>
+    public ProcessMemoryMap? MemoryMap
+    {
+        get => _memoryMap;
+        private set
+        {
+            if (Set(ref _memoryMap, value))
+            {
+                OnPropertyChanged(nameof(HasMemoryMap));
+                OnPropertyChanged(nameof(HasSubpage));
+            }
+        }
+    }
+
+    public bool HasMemoryMap => _memoryMap is not null;
+
+    /// <summary>A page about the selected process (.NET runtime, memory makeup) has the table's place.</summary>
+    public bool HasSubpage => _managedPage is not null || _memoryMap is not null;
 
     /// <summary>A destructive action waiting for the user to confirm it.</summary>
     public Confirmation? Confirmation
@@ -392,6 +417,10 @@ public sealed class ProcessList : ObservableObject, IDisposable
 
             _isShown = value;
             _details?.Watch(value);
+
+            // Leaving the page ends the trip from another page: the back link goes with it.
+            if (!value)
+                Back = null;
             if (value)
                 SampleNow();
         }
@@ -434,6 +463,7 @@ public sealed class ProcessList : ObservableObject, IDisposable
             _latest = snapshot;
             UpdateFollowed(snapshot);
             UpdateDetails(snapshot);
+            SelectPending(snapshot);
             if (_isShown && !_showEnded)
                 Render();
         }
@@ -491,6 +521,96 @@ public sealed class ProcessList : ObservableObject, IDisposable
     }
 
     internal void CloseManaged() => ManagedPage = null;
+
+    internal void OpenMemoryMap(ProcessDetails details)
+    {
+        if (ReferenceEquals(_details, details) && details.IsAlive)
+            MemoryMap = new ProcessMemoryMap(details.Key.Id, details.Name, CloseMemoryMap);
+    }
+
+    internal void CloseMemoryMap() => MemoryMap = null;
+
+    /// <summary>The page another page sent the user here from; null when they came from the sidebar.</summary>
+    private (string Title, Action Go)? Back
+    {
+        get => _back;
+        set
+        {
+            _back = value;
+            OnPropertyChanged(nameof(HasBack));
+            OnPropertyChanged(nameof(BackText));
+        }
+    }
+
+    public bool HasBack => _back is not null;
+
+    public string BackText => _back is { } back ? $"Back to {back.Title}" : string.Empty;
+
+    public ICommand BackCommand => _backCommand ??= new RelayCommand(() => _back?.Go());
+
+    /// <summary>A process another page asked for, once a sample shows whether it still runs.</summary>
+    private void SelectPending(ProcessSnapshot snapshot)
+    {
+        if (_pendingSelect is not { } key)
+            return;
+
+        _pendingSelect = null;
+        if (snapshot.ByKey.ContainsKey(key))
+        {
+            Select(key);
+        }
+        else if (_endedByKey.TryGetValue(key, out var ended))
+        {
+            IsEndedView = true;
+            SelectEnded(ended);
+        }
+    }
+
+    /// <summary>
+    /// Another page's question. One process: its details, in the list as it is (if it has ended
+    /// meanwhile, its ended details). A user's processes: the running list with whatever narrowed
+    /// it cleared, then the query as column filters, shown in the filter row so it's plain why the
+    /// list is short and how to widen it again. <paramref name="back"/> is the page it came from.
+    /// </summary>
+    internal void Show(ProcessQuery query, (string Title, Action Go)? back)
+    {
+        Confirmation = null;
+        ManagedPage = null;
+        MemoryMap = null;
+        IsEndedView = false;
+        Back = back;
+
+        if (query.ProcessId is { } id)
+        {
+            // The page may not have sampled for a while: open it once a fresh sample is in.
+            _pendingSelect = new ProcessKey(id, query.CreateTime);
+            if (_isShown)
+                SampleNow();
+            return;
+        }
+
+        Details = null;
+        SearchText = string.Empty;
+        FollowedOnly = false;
+        DotnetOnly = false;
+        ThisSessionOnly = false;
+        foreach (var column in _columns)
+            column.FilterText = string.Empty;
+
+        // A filter on a hidden column is cleared, so show the columns the query filters on.
+        if (query.User is { } user)
+            Filter(ProcessColumn.User, $"={user}");
+        if (query.SessionId is { } session)
+            Filter(ProcessColumn.Session, $"={session.ToString(CultureInfo.InvariantCulture)}");
+        ShowColumnFilters = _filtered.Length > 0;
+
+        void Filter(ProcessColumn which, string text)
+        {
+            var column = _columns.First(c => c.Column == which);
+            column.IsVisible = true;
+            column.FilterText = text;
+        }
+    }
 
     internal bool IsRunning(ProcessKey key) => _latest?.ByKey.ContainsKey(key) ?? false;
 

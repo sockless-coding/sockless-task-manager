@@ -96,7 +96,17 @@
               </ItemsControl.ItemTemplate>
             </ItemsControl>
 
-            <ctl:CapsText Grid.Row="1" Classes="label" Value="{Binding ProcessesTitle}" Margin="0,0,0,6" />
+            <Grid Grid.Row="1" ColumnDefinitions="*,Auto" Margin="0,0,0,6">
+              <ctl:CapsText Classes="label" Value="{Binding ProcessesTitle}" VerticalAlignment="Center" />
+              <Button Grid.Column="1" Theme="{StaticResource LinkButton}" Command="{Binding ShowProcessesCommand}"
+                      IsVisible="{Binding CanShowProcesses}"
+                      ToolTip.Tip="The Processes page, filtered to these processes">
+                <StackPanel Orientation="Horizontal" Spacing="4">
+                  <TextBlock Text="Show in Processes" FontSize="{StaticResource SlTextSmall}" VerticalAlignment="Center" />
+                  <ctl:Icon Width="14" Height="14" Data="{StaticResource IconChevronRight}" />
+                </StackPanel>
+              </Button>
+            </Grid>
 
             <Border Grid.Row="2" Classes="callout info" Margin="0,0,0,8" IsVisible="{Binding HasHidden}">
               <StackPanel Spacing="6">
@@ -112,7 +122,7 @@
             </Border>
 
             <Grid Grid.Row="3" RowDefinitions="Auto,*">
-              <Grid ColumnDefinitions="*,52,44,64" ColumnSpacing="8" Margin="0,0,12,4">
+              <Grid ColumnDefinitions="*,52,44,64" ColumnSpacing="8" Margin="8,0,20,4">
                 <TextBlock Classes="caption" Text="Name" />
                 <TextBlock Grid.Column="1" Classes="caption" Text="PID" HorizontalAlignment="Right" />
                 <TextBlock Grid.Column="2" Classes="caption" Text="CPU" HorizontalAlignment="Right" />
@@ -133,12 +143,16 @@
                 </ItemsControl.ItemsPanel>
                 <ItemsControl.ItemTemplate>
                   <DataTemplate x:DataType="users:UserProcessLine">
-                    <Grid ColumnDefinitions="*,52,44,64" ColumnSpacing="8" Margin="0,3,12,3">
-                      <TextBlock Classes="cell" Text="{Binding Name}" ToolTip.Tip="{Binding Name}" />
-                      <TextBlock Grid.Column="1" Classes="number secondary" Text="{Binding IdText}" />
-                      <TextBlock Grid.Column="2" Classes="number" Text="{Binding CpuText}" />
-                      <TextBlock Grid.Column="3" Classes="number" Text="{Binding MemoryText}" />
-                    </Grid>
+                    <Button Theme="{StaticResource TableRow}" Padding="8,3" Margin="0,0,12,0"
+                            Command="{Binding OpenCommand}" ToolTip.Tip="Open in Processes"
+                            AutomationProperties.Name="{Binding AccessibleName}">
+                      <Grid ColumnDefinitions="*,52,44,64" ColumnSpacing="8">
+                        <TextBlock Classes="cell" Text="{Binding Name}" />
+                        <TextBlock Grid.Column="1" Classes="number secondary" Text="{Binding IdText}" />
+                        <TextBlock Grid.Column="2" Classes="number" Text="{Binding CpuText}" />
+                        <TextBlock Grid.Column="3" Classes="number" Text="{Binding MemoryText}" />
+                      </Grid>
+                    </Button>
                   </DataTemplate>
                 </ItemsControl.ItemTemplate>
               </ItemsControl>

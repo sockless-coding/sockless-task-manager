@@ -51,6 +51,9 @@ internal sealed record Entry(string Key, string Name, double Bytes)
 
     public bool CanOpen { get; init; }
 
+    /// <summary>A process: opening it shows the process on the Processes page rather than a level here.</summary>
+    public (int Id, long CreateTime)? Process { get; init; }
+
     /// <summary>Left out while it holds nothing (bad pages, usually).</summary>
     public bool Optional { get; init; }
 

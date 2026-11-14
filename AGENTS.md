@@ -23,14 +23,18 @@ Sockless Task Manager is a lightweight Windows Task Manager alternative: .NET 11
 ```
 src/SocklessTaskManager/
   App.axaml(.cs)        composition root: the list of top-level features
-  Core/                 the small shared kernel: Feature, SampleClock, History, Format, interop used by several slices
-  Controls/             reusable visuals: HistoryGraph, GraphFrame, Icon, CapsText
+  Core/                 the small shared kernel: Feature, SampleClock, Navigator, History, Format, interop used by several slices
+  Controls/             reusable visuals: HistoryGraph, GraphFrame, Icon, CapsText, CompositionBar, ShareBar
   Theme/                Tokens.axaml (design tokens), Icons.axaml (Heroicons + gear), Controls.axaml (component styles)
   Shell/                main window: sidebar, top bar, page host
   Features/
     Processes/          a top-level feature: process list and tree, search, filters, followed processes,
                         details and actions (end, suspend, priority, affinity, full or heap dump file), ended processes (ETW when elevated),
-                        a column chooser and column filters (TableColumn.cs, ColumnFilter.cs)
+                        a column chooser and column filters (TableColumn.cs, ColumnFilter.cs). Home of a process's details:
+                        other pages open a process (or a user's processes) here with a ProcessQuery through the Navigator
+                        (ProcessList.Show), and the page offers a link back to where they came from. A line in
+                        the details pane opens the memory makeup page (ProcessMemoryMap: private data, DLLs, mapped files),
+                        which takes the page's place until Esc, as the .NET runtime page does.
       Dotnet/           .NET processes: GC and runtime counters, heap-by-type snapshots (retained sizes, compared
                         with the one before), allocations and thrown exceptions, over the diagnostics IPC pipe and a
                         hand-written nettrace reader that keeps Native AOT green (TraceEvent relies on reflection).
@@ -45,10 +49,12 @@ src/SocklessTaskManager/
     Performance/        a top-level feature (one sidebar entry)
       PerformanceModule.cs   the list of device scanners for this feature
       Cpu/ Memory/ Disk/ Network/ Gpu/   one sub-slice per device kind
-    Memory/             a top-level feature: drill-down of physical memory (BreakdownTree.cs maps paths to levels)
+    Memory/             a top-level feature: drill-down of physical memory (BreakdownTree.cs maps paths to levels).
+                        Processes are listed by share of memory; opening one shows it on the Processes page.
     Users/              a top-level feature: signed-in sessions (WTS, Sessions.cs) with their processes' CPU and
                         memory, disconnect and sign out; or every account that owns a process (token owners, read
-                        once per process). Without elevation, other users' and services' owners can't be read and
+                        once per process). The details pane lists their processes; each opens on the Processes page, and
+                        "Show in Processes" opens the page filtered to that user. Without elevation, other users' and services' owners can't be read and
                         are listed as "Not readable".
     Updates/            not a page: the top bar's update offer. Reads the latest tag from GitHub's /releases/latest
                         redirect, downloads the release zip, checks its .sha256, renames running files to .old and
@@ -56,7 +62,9 @@ src/SocklessTaskManager/
                         the asset names must match release.yml.
 ```
 
-A slice owns everything it needs: native calls, sensor, view model and view. Slices don't reference each other. Code moves into `Core/` only when a second slice needs it (PDH, `GetPerformanceInfo` and `NtQuerySystemInformation` with its process-list parser are there for that reason, as are `Accounts` (process token owners), `Elevation` and `Confirmation`, shared by Processes and Users).
+A slice owns everything it needs: native calls, sensor, view model and view. Slices don't reference each other. Code moves into `Core/` only when a second slice needs it (PDH, `GetPerformanceInfo` and `NtQuerySystemInformation` with its process-list parser are there for that reason, as are `Accounts` (process token owners), `Elevation` and `Confirmation`, shared by Processes and Users, and `AddressSpace`, shared by Processes and Memory).
+
+When one slice needs to show another's page, it goes through `Core/Navigator.cs`: Users and Memory call `ShowProcesses(new ProcessQuery(...))`, the Processes feature applies it and calls `Open(this)`, and the shell selects it. Pages may list processes in their own terms (shares of memory, a user's processes), but a process's details, actions and drill-downs live only on the Processes page: a row elsewhere opens it there rather than growing details of its own. If a page needs more than `ProcessQuery` offers, add it there.
 
 ### Sampling model
 

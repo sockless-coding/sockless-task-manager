@@ -9,18 +9,22 @@ namespace Sockless.TaskManager.Shell;
 public sealed class ShellViewModel : ObservableObject, IDisposable
 {
     private readonly SampleClock _clock;
+    private readonly Navigator _navigator;
     private readonly bool _motionReduced = Motion.IsReduced;
     private Feature _selectedFeature;
     private bool _isSidebarOpen = true;
 
-    public ShellViewModel(SampleClock clock, IReadOnlyList<Feature> features, Updater updates)
+    public ShellViewModel(SampleClock clock, Navigator navigator, IReadOnlyList<Feature> features, Updater updates)
     {
         _clock = clock;
+        _navigator = navigator;
         Features = features;
         Updates = updates;
         _selectedFeature = features[0];
+        navigator.Current = _selectedFeature;
         TogglePauseCommand = new RelayCommand(() => _clock.IsPaused = !_clock.IsPaused);
         _clock.PropertyChanged += OnClockChanged;
+        navigator.OpenRequested += feature => SelectedFeature = feature;
     }
 
     public IReadOnlyList<Feature> Features { get; }
@@ -33,8 +37,8 @@ public sealed class ShellViewModel : ObservableObject, IDisposable
         set
         {
             // The nav list can momentarily clear its selection; a page is always shown.
-            if (value is not null)
-                Set(ref _selectedFeature, value);
+            if (value is not null && Set(ref _selectedFeature, value))
+                _navigator.Current = value;
         }
     }
 

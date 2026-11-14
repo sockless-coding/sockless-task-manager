@@ -1,6 +1,6 @@
 using System.Runtime.InteropServices;
 
-namespace Sockless.TaskManager.Features.Memory;
+namespace Sockless.TaskManager.Core.Interop;
 
 /// <summary>A file mapped into memory and how much of it is resident.</summary>
 /// <param name="ResidentBytes">In RAM in one process, or, across processes, the most in any one of them.</param>
@@ -53,19 +53,16 @@ internal static partial class AddressSpace
     public static ProcessSpace Scan(int processId) =>
         TryScan(processId, DeviceMap.Read()) ?? throw new UnauthorizedAccessException(AccessDenied);
 
-    public static SharedFiles ScanAll(IReadOnlyList<ProcessUsage> processes)
+    /// <param name="processIds">Leave out the kernel's own processes (System, Memory Compression): they map no files.</param>
+    public static SharedFiles ScanAll(IEnumerable<int> processIds)
     {
         var devices = DeviceMap.Read();
         var files = new Dictionary<string, (ulong Max, int Count)>(StringComparer.OrdinalIgnoreCase);
         int read = 0, denied = 0;
 
-        foreach (var process in processes)
+        foreach (var id in processIds)
         {
-            // The kernel and the compression store map no files.
-            if (process.Id == 4 || process.Name == ProcessMemory.CompressionName)
-                continue;
-
-            if (TryScan(process.Id, devices) is not { } space)
+            if (TryScan(id, devices) is not { } space)
             {
                 denied++;
                 continue;

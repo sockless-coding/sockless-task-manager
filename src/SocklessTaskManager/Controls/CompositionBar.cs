@@ -2,7 +2,7 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Media;
 
-namespace Sockless.TaskManager.Features.Memory;
+namespace Sockless.TaskManager.Controls;
 
 public sealed record CompositionSegment(double Fraction, IBrush Brush);
 

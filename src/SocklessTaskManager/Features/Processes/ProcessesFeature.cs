@@ -12,9 +12,17 @@ namespace Sockless.TaskManager.Features.Processes;
 /// </summary>
 public sealed class ProcessesFeature : Feature, ISampled
 {
-    public ProcessesFeature(SampleClock clock)
+    public ProcessesFeature(SampleClock clock, Navigator navigator)
     {
         clock.Subscribe(this);
+
+        // Other pages list no processes of their own: they send their question here.
+        navigator.ProcessesRequested += query =>
+        {
+            var from = navigator.Current;
+            List.Show(query, from is null || ReferenceEquals(from, this) ? null : (from.Title, () => navigator.Open(from)));
+            navigator.Open(this);
+        };
     }
 
     public override string Title => "Processes";

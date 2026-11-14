@@ -45,7 +45,7 @@
         <TextBlock Grid.Column="1" Classes="readout" Text="{Binding TotalText}" VerticalAlignment="Top" Margin="0,6,0,0" />
       </Grid>
 
-      <mem:CompositionBar Height="20" Margin="0,4,0,0" Segments="{Binding Composition}"
+      <ctl:CompositionBar Height="20" Margin="0,4,0,0" Segments="{Binding Composition}"
                           Background="{StaticResource SlChartPlot}" BorderBrush="{StaticResource SlBorder}"
                           IsVisible="{Binding ShowComposition}" />
 
@@ -105,7 +105,7 @@
 
                   <Grid Grid.Column="1" ColumnDefinitions="*,36" ColumnSpacing="8"
                         IsVisible="{Binding $parent[ItemsControl].((mem:MemoryBreakdown)DataContext).ShowShare}">
-                    <mem:ShareBar Height="6" VerticalAlignment="Center"
+                    <ctl:ShareBar Height="6" VerticalAlignment="Center"
                                   Value="{Binding Share}" Fill="{Binding Series}"
                                   Background="{StaticResource SlRaised}" />
                     <TextBlock Grid.Column="1" Classes="caption mono" Text="{Binding ShareText}"

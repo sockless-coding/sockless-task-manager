@@ -118,9 +118,25 @@ public sealed partial class ProcessesView : UserControl
         if (e.PropertyName == nameof(ProcessList.TableMinWidth))
             FitTable();
 
+        // A process opened from another page may be far down the list: bring its row into view.
+        if (e.PropertyName == nameof(ProcessList.Details) && _list?.SelectedKey is { } key)
+            Dispatcher.UIThread.Post(() => Reveal(key), DispatcherPriority.Loaded);
+
         // A destructive prompt starts on Cancel, so Enter or Space alone never confirms it.
         if (e.PropertyName == nameof(ProcessList.HasConfirmation) && _list is { HasConfirmation: true })
             Dispatcher.UIThread.Post(() => ConfirmCancel.Focus(NavigationMethod.Tab));
+    }
+
+    private void Reveal(ProcessKey key)
+    {
+        if (_list is not { } list)
+            return;
+
+        var index = list.IsEndedView
+            ? list.EndedRows.ToList().FindIndex(r => r.Key == key)
+            : list.Rows.ToList().FindIndex(r => r.Key == key);
+        if (index >= 0)
+            (list.IsEndedView ? EndedTable : RunningTable).ScrollIntoView(index);
     }
 
     private void Copy(string text)
@@ -147,7 +163,7 @@ public sealed partial class ProcessesView : UserControl
 
     private void OnWindowKeyDown(object? sender, KeyEventArgs e)
     {
-        if (e.Key == Key.F && e.KeyModifiers == KeyModifiers.Control && _list is not ({ HasConfirmation: true } or { HasManagedPage: true }))
+        if (e.Key == Key.F && e.KeyModifiers == KeyModifiers.Control && _list is not ({ HasConfirmation: true } or { HasSubpage: true }))
         {
             Search.Focus(NavigationMethod.Tab);
             Search.SelectAll();
@@ -173,6 +189,8 @@ public sealed partial class ProcessesView : UserControl
             confirmation.CancelCommand.Execute(null);
         else if (list.HasManagedPage)
             list.CloseManaged();
+        else if (list.HasMemoryMap)
+            list.CloseMemoryMap();
         else if (list.HasDetails)
             list.CloseDetails();
         else

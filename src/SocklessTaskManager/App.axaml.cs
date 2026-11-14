@@ -20,18 +20,19 @@ public sealed class App : Application
         if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
         {
             var clock = new SampleClock();
+            var navigator = new Navigator();
 
             // Composition root. Each top-level feature is a slice under Features/; add new ones here.
             // Sidebar order follows this list.
             Feature[] features =
             [
-                new ProcessesFeature(clock),
+                new ProcessesFeature(clock, navigator),
                 PerformanceModule.Create(clock),
-                new MemoryFeature(clock),
-                new UsersFeature(clock),
+                new MemoryFeature(clock, navigator),
+                new UsersFeature(clock, navigator),
             ];
 
-            var shell = new ShellViewModel(clock, features, new Updater());
+            var shell = new ShellViewModel(clock, navigator, features, new Updater());
             desktop.MainWindow = new MainWindow { DataContext = shell };
             desktop.Exit += (_, _) => shell.Dispose();
 

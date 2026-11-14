@@ -24,6 +24,8 @@ public sealed class UserList : ObservableObject
     /// <summary>The details list keeps its order between re-sorts, so it doesn't reshuffle under the pointer.</summary>
     private const long ResortMilliseconds = 5000;
 
+    private readonly Navigator _navigator;
+
     // Sampling thread.
     private readonly UsersSampler _sampler = new();
 
@@ -44,8 +46,9 @@ public sealed class UserList : ObservableObject
     private long _rankedAt;
     private bool _isEmpty;
 
-    internal UserList()
+    internal UserList(Navigator navigator)
     {
+        _navigator = navigator;
     }
 
     /// <summary>Set by the view; the page samples only while it's shown.</summary>
@@ -366,7 +369,10 @@ public sealed class UserList : ObservableObject
         }
 
         row.IsSelected = true;
-        var details = new UserDetails(row.Key, group.Session is not null, () => Select(null), Disconnect, AskSignOut);
+        var details = new UserDetails(row.Key, group.Session is not null, () => Select(null), Disconnect, AskSignOut, ShowProcesses)
+        {
+            CanShowProcesses = Query(group) is not null,
+        };
         FillDetails(details, group, snapshot);
         Details = details;
     }
@@ -432,7 +438,7 @@ public sealed class UserList : ObservableObject
         {
             var key = (p.Id, p.CreateTime);
             if (!_lines.TryGetValue(key, out var line))
-                line = new UserProcessLine(p.Name, p.Id);
+                line = new UserProcessLine(p.Name, p.Id, OpenProcess) { Key = key };
 
             line.Memory = p.Memory;
             line.CpuText = p.Cpu is { } cpu ? Format.Percent(cpu) : "—";
@@ -461,6 +467,24 @@ public sealed class UserList : ObservableObject
 
         Reconcile(details.Processes, wanted);
     }
+
+    /// <summary>The Processes page filter for a row: the user in that session, or the account anywhere.</summary>
+    private static ProcessQuery? Query(UserGroup group) => group switch
+    {
+        { Session: { } session } => new ProcessQuery(User: session.UserName, SessionId: session.Id),
+        { Account: { } account } => new ProcessQuery(User: account.Name),
+        _ => null,
+    };
+
+    private void ShowProcesses()
+    {
+        if (_selected?.Group is { } group && Query(group) is { } query)
+            _navigator.ShowProcesses(query);
+    }
+
+    /// <summary>One process, in the Processes page's details: graphs, actions, memory makeup.</summary>
+    private void OpenProcess(UserProcessLine line) =>
+        _navigator.ShowProcesses(new ProcessQuery(ProcessId: line.Key.Id, CreateTime: line.Key.CreateTime));
 
     // ---------- Actions ----------
 
