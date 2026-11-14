@@ -1,0 +1,303 @@
+<!--
+  Storage page: breadcrumbs, the level's title, explanation and total, the scan's status with
+  its actions, then a treemap of the level above a table of the same items. The treemap is a
+  visual aid; the table carries names, sizes, keyboard access and Show in Explorer. On the
+  drive list, and while a drive is first scanned, the table takes the whole height.
+-->
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:ctl="using:Sockless.TaskManager.Controls"
+             xmlns:st="using:Sockless.TaskManager.Features.Storage"
+             x:Class="Sockless.TaskManager.Features.Storage.StorageView"
+             x:DataType="st:StorageBrowser">
+  <UserControl.KeyBindings>
+    <KeyBinding Gesture="Back" Command="{Binding UpCommand}" />
+    <KeyBinding Gesture="Alt+Left" Command="{Binding UpCommand}" />
+  </UserControl.KeyBindings>
+
+  <Panel>
+  <Grid RowDefinitions="Auto,*" Margin="{StaticResource SlContentPadding}" IsEnabled="{Binding !HasConfirmation}">
+    <StackPanel Spacing="10" Margin="0,0,0,16">
+      <ItemsControl ItemsSource="{Binding Crumbs}" AutomationProperties.Name="Breadcrumb"
+                    IsVisible="{Binding HasCrumbs}">
+        <ItemsControl.ItemsPanel>
+          <ItemsPanelTemplate>
+            <WrapPanel />
+          </ItemsPanelTemplate>
+        </ItemsControl.ItemsPanel>
+        <ItemsControl.ItemTemplate>
+          <DataTemplate x:DataType="st:StorageCrumb">
+            <StackPanel Orientation="Horizontal">
+              <TextBlock Text="/" Margin="8,0" Classes="mono" FontSize="{StaticResource SlTextSmall}"
+                         Foreground="{StaticResource SlBorderAccent}" IsVisible="{Binding ShowSeparator}" />
+              <Button Theme="{StaticResource LinkButton}" Command="{Binding NavigateCommand}"
+                      IsVisible="{Binding IsLink}" AutomationProperties.Name="{Binding Name}">
+                <TextBlock Classes="mono" FontSize="{StaticResource SlTextSmall}" Text="{Binding Name}" />
+              </Button>
+              <TextBlock Classes="mono secondary" FontSize="{StaticResource SlTextSmall}" Text="{Binding Name}"
+                         IsVisible="{Binding IsCurrent}" />
+            </StackPanel>
+          </DataTemplate>
+        </ItemsControl.ItemTemplate>
+      </ItemsControl>
+
+      <Grid ColumnDefinitions="*,Auto" ColumnSpacing="24">
+        <StackPanel Spacing="4">
+          <TextBlock Classes="page-title" Text="{Binding Title}" TextTrimming="CharacterEllipsis" />
+          <TextBlock Classes="secondary" Text="{Binding Description}" TextWrapping="Wrap" MaxWidth="900"
+                     HorizontalAlignment="Left"
+                     IsVisible="{Binding Description, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+        </StackPanel>
+        <TextBlock Grid.Column="1" Classes="readout" Text="{Binding TotalText}" VerticalAlignment="Top" Margin="0,6,0,0" />
+      </Grid>
+
+      <Grid ColumnDefinitions="*,Auto" ColumnSpacing="16" IsVisible="{Binding HasStatus}">
+        <StackPanel Spacing="6" VerticalAlignment="Center">
+          <TextBlock Classes="caption" Text="{Binding Status}" TextWrapping="Wrap"
+                     IsVisible="{Binding Status, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+          <ctl:ShareBar Height="4" MaxWidth="480" HorizontalAlignment="Stretch"
+                        Value="{Binding Progress}" Fill="{StaticResource SlAccent}"
+                        Background="{StaticResource SlRaised}" IsVisible="{Binding ShowProgress}" />
+          <Button Theme="{StaticResource LinkButton}" Command="{Binding RestartElevatedCommand}"
+                  IsVisible="{Binding OfferElevation}" HorizontalAlignment="Left">
+            <StackPanel Orientation="Horizontal" Spacing="4">
+              <ctl:Icon Width="14" Height="14" Data="{StaticResource IconShield}" />
+              <TextBlock Text="Restart as administrator" FontSize="{StaticResource SlTextSmall}" VerticalAlignment="Center" />
+            </StackPanel>
+          </Button>
+        </StackPanel>
+
+        <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+          <Button Theme="{StaticResource SoftButton}" Command="{Binding StopCommand}" IsVisible="{Binding CanStop}"
+                  ToolTip.Tip="Stop reading; what was already found is discarded">
+            <StackPanel Orientation="Horizontal" Spacing="6">
+              <ctl:Icon Width="14" Height="14" Data="{StaticResource IconClose}" />
+              <TextBlock Text="Stop" />
+            </StackPanel>
+          </Button>
+          <Button Theme="{StaticResource SoftButton}" Command="{Binding RescanCommand}" IsVisible="{Binding CanRescan}"
+                  ToolTip.Tip="Read this folder and everything in it again">
+            <StackPanel Orientation="Horizontal" Spacing="6">
+              <ctl:Icon Width="14" Height="14" Data="{StaticResource IconRefresh}" />
+              <TextBlock Text="{Binding RescanText}" />
+            </StackPanel>
+          </Button>
+          <Button Theme="{StaticResource SoftButton}" Command="{Binding ShowInExplorerCommand}" IsVisible="{Binding CanShowInExplorer}"
+                  ToolTip.Tip="Open this folder in File Explorer">
+            <StackPanel Orientation="Horizontal" Spacing="6">
+              <ctl:Icon Width="14" Height="14" Data="{StaticResource IconFolderOpen}" />
+              <TextBlock Text="Open in Explorer" />
+            </StackPanel>
+          </Button>
+        </StackPanel>
+      </Grid>
+
+      <!-- Outcome of the last delete (components.md → Callouts). -->
+      <Border Classes="callout" Classes.info="{Binding !NoticeIsError}" Classes.danger="{Binding NoticeIsError}" IsVisible="{Binding HasNotice}" MaxWidth="900" HorizontalAlignment="Left">
+        <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="8">
+          <ctl:Icon Classes="status" Width="16" Height="16" VerticalAlignment="Top"
+                    Data="{StaticResource IconWarning}" IsVisible="{Binding NoticeIsError}" />
+          <ctl:Icon Classes="status" Width="16" Height="16" VerticalAlignment="Top"
+                    Data="{StaticResource IconTrash}" IsVisible="{Binding !NoticeIsError}" />
+          <TextBlock Grid.Column="1" Text="{Binding Notice}" TextWrapping="Wrap" FontSize="{StaticResource SlTextSmall}" VerticalAlignment="Center" />
+          <Button Grid.Column="2" Theme="{StaticResource IconButton}" Command="{Binding DismissNoticeCommand}"
+                  VerticalAlignment="Top" AutomationProperties.Name="Dismiss">
+            <ctl:Icon Width="14" Height="14" Data="{StaticResource IconClose}" />
+          </Button>
+        </Grid>
+      </Border>
+    </StackPanel>
+
+    <Grid Grid.Row="1" RowDefinitions="5*,4*" RowSpacing="16">
+      <Border Classes="card" Padding="12" IsVisible="{Binding ShowTreemap}">
+        <Grid RowDefinitions="*,Auto" RowSpacing="10">
+          <ctl:Treemap Items="{Binding TreemapItems}"
+                       Background="{StaticResource SlChartPlot}"
+                       HoverBrush="{StaticResource SlAccentHover}"
+                       Foreground="{StaticResource SlText}"
+                       DetailForeground="{StaticResource SlTextSecondary}"
+                       ContextCommand="{Binding ContextCommand}"
+                       AutomationProperties.Name="Map of the sizes below">
+            <!-- Acts on the box that was right-clicked (ContextTarget), at whatever depth. -->
+            <ctl:Treemap.ContextMenu>
+              <ContextMenu>
+                <MenuItem Header="{Binding ContextTarget.Name, FallbackValue=''}" IsEnabled="False" FontWeight="SemiBold" />
+                <Separator />
+                <MenuItem Header="{Binding ContextTarget.OpenText, FallbackValue=Open}" Command="{Binding ContextTarget.OpenCommand}"
+                          IsEnabled="{Binding ContextTarget.CanOpen, FallbackValue=False}" />
+                <MenuItem Header="{Binding ContextTarget.ExplorerText, FallbackValue='Show in File Explorer'}" Command="{Binding ContextTarget.ExplorerCommand}"
+                          IsEnabled="{Binding ContextTarget.HasPath, FallbackValue=False}" />
+                <MenuItem Header="Copy path" Command="{Binding ContextTarget.CopyPathCommand}"
+                          IsEnabled="{Binding ContextTarget.HasPath, FallbackValue=False}" />
+                <MenuItem Header="Rescan folder" Command="{Binding ContextTarget.RescanCommand}"
+                          IsVisible="{Binding ContextTarget.IsFolder, FallbackValue=False}" />
+                <MenuItem Header="Properties" Command="{Binding ContextTarget.PropertiesCommand}"
+                          IsEnabled="{Binding ContextTarget.HasPath, FallbackValue=False}" />
+                <Separator />
+                <MenuItem Header="Delete…" InputGesture="Delete" Command="{Binding ContextTarget.DeleteCommand}"
+                          IsEnabled="{Binding ContextTarget.CanDelete, FallbackValue=False}" />
+                <MenuItem Header="Delete permanently…" InputGesture="Shift+Delete" Command="{Binding ContextTarget.DeletePermanentlyCommand}"
+                          IsEnabled="{Binding ContextTarget.CanDelete, FallbackValue=False}" />
+              </ContextMenu>
+            </ctl:Treemap.ContextMenu>
+          </ctl:Treemap>
+
+          <!-- Legend: each colour paired with a word (accessibility: never colour alone). -->
+          <WrapPanel Grid.Row="1" ItemSpacing="20" LineSpacing="4">
+            <StackPanel Orientation="Horizontal" Spacing="6">
+              <Border Width="10" Height="10" VerticalAlignment="Center" CornerRadius="{StaticResource SlRadiusXs}"
+                      Background="{StaticResource SlSeries1Tint}" BorderBrush="{StaticResource SlSeries1}" BorderThickness="1" />
+              <TextBlock Classes="caption" Text="Folder" />
+            </StackPanel>
+            <StackPanel Orientation="Horizontal" Spacing="6">
+              <Border Width="10" Height="10" VerticalAlignment="Center" CornerRadius="{StaticResource SlRadiusXs}"
+                      Background="{StaticResource SlSeries4Tint}" BorderBrush="{StaticResource SlSeries4}" BorderThickness="1" />
+              <TextBlock Classes="caption" Text="File" />
+            </StackPanel>
+            <StackPanel Orientation="Horizontal" Spacing="6">
+              <Border Width="10" Height="10" VerticalAlignment="Center" CornerRadius="{StaticResource SlRadiusXs}"
+                      Background="{StaticResource SlSeries3Tint}" BorderBrush="{StaticResource SlSeries3}" BorderThickness="1" />
+              <TextBlock Classes="caption" Text="Smaller files" />
+            </StackPanel>
+            <StackPanel Orientation="Horizontal" Spacing="6">
+              <Border Width="10" Height="10" VerticalAlignment="Center" CornerRadius="{StaticResource SlRadiusXs}"
+                      Background="{StaticResource SlSeriesIdleTint}" BorderBrush="{StaticResource SlSeriesIdle}" BorderThickness="1" />
+              <TextBlock Classes="caption" Text="System and unreadable" />
+            </StackPanel>
+            <TextBlock Classes="caption" Text="Folders show what's inside them. Point at a box for details; select a folder to open it." />
+          </WrapPanel>
+        </Grid>
+      </Border>
+
+      <Border Grid.Row="{Binding TableRow}" Grid.RowSpan="{Binding TableRowSpan}"
+              Classes="card" Padding="0" ClipToBounds="True">
+        <Grid RowDefinitions="Auto,*">
+          <Border Classes="table-header">
+            <Grid ColumnDefinitions="*,180,96,28,16" ColumnSpacing="16">
+              <TextBlock Text="Name" />
+              <TextBlock Grid.Column="1" Text="{Binding ShareHeader}" />
+              <TextBlock Grid.Column="2" Text="{Binding SizeHeader}" HorizontalAlignment="Right" />
+            </Grid>
+          </Border>
+
+          <ItemsControl Grid.Row="1" ItemsSource="{Binding Rows}" AutomationProperties.Name="{Binding Title}">
+            <ItemsControl.Template>
+              <ControlTemplate>
+                <ScrollViewer HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
+                  <ItemsPresenter Name="PART_ItemsPresenter" ItemsPanel="{TemplateBinding ItemsPanel}" />
+                </ScrollViewer>
+              </ControlTemplate>
+            </ItemsControl.Template>
+            <ItemsControl.ItemsPanel>
+              <ItemsPanelTemplate>
+                <VirtualizingStackPanel />
+              </ItemsPanelTemplate>
+            </ItemsControl.ItemsPanel>
+            <ItemsControl.ItemTemplate>
+              <DataTemplate x:DataType="st:StorageRow">
+                <!--
+                  Show in Explorer and the context menu sit on the row's grid rather than its button:
+                  rows that don't open (files) are disabled buttons, and both must still work on them.
+                -->
+                <Grid Background="Transparent">
+                  <Grid.ContextMenu>
+                    <ContextMenu>
+                      <MenuItem Header="{Binding Target.OpenText, FallbackValue=Open}" Command="{Binding Target.OpenCommand}"
+                                IsEnabled="{Binding Target.CanOpen, FallbackValue=False}" />
+                      <MenuItem Header="{Binding Target.ExplorerText, FallbackValue='Show in File Explorer'}" Command="{Binding Target.ExplorerCommand}"
+                                IsEnabled="{Binding Target.HasPath, FallbackValue=False}" />
+                      <MenuItem Header="Copy path" Command="{Binding Target.CopyPathCommand}"
+                                IsEnabled="{Binding Target.HasPath, FallbackValue=False}" />
+                      <MenuItem Header="Rescan folder" Command="{Binding Target.RescanCommand}"
+                                IsVisible="{Binding Target.IsFolder, FallbackValue=False}" />
+                      <MenuItem Header="Properties" Command="{Binding Target.PropertiesCommand}"
+                                IsEnabled="{Binding Target.HasPath, FallbackValue=False}" />
+                      <Separator />
+                      <MenuItem Header="Delete…" InputGesture="Delete" Command="{Binding Target.DeleteCommand}"
+                                IsEnabled="{Binding Target.CanDelete, FallbackValue=False}" />
+                      <MenuItem Header="Delete permanently…" InputGesture="Shift+Delete" Command="{Binding Target.DeletePermanentlyCommand}"
+                                IsEnabled="{Binding Target.CanDelete, FallbackValue=False}" />
+                    </ContextMenu>
+                  </Grid.ContextMenu>
+                  <Button Theme="{StaticResource TableRow}"
+                          Command="{Binding OpenCommand}" IsEnabled="{Binding CanOpen}"
+                          ToolTip.Tip="{Binding ToolTip}"
+                          AutomationProperties.Name="{Binding AccessibleName}">
+                    <Button.KeyBindings>
+                      <KeyBinding Gesture="Delete" Command="{Binding Target.DeleteCommand, FallbackValue={x:Null}}" />
+                      <KeyBinding Gesture="Shift+Delete" Command="{Binding Target.DeletePermanentlyCommand, FallbackValue={x:Null}}" />
+                    </Button.KeyBindings>
+                    <Grid ColumnDefinitions="*,180,96,28,16" ColumnSpacing="16">
+                      <Grid ColumnDefinitions="Auto,*">
+                        <Border Width="10" Height="10" Margin="0,0,10,0" VerticalAlignment="Center"
+                                CornerRadius="{StaticResource SlRadiusXs}" Background="{Binding Series}" />
+                        <StackPanel Grid.Column="1" Spacing="1" VerticalAlignment="Center">
+                          <TextBlock Text="{Binding Name}" TextTrimming="CharacterEllipsis" />
+                          <TextBlock Classes="caption" Text="{Binding Note}" TextTrimming="CharacterEllipsis"
+                                     IsVisible="{Binding HasNote}" />
+                        </StackPanel>
+                      </Grid>
+
+                      <Grid Grid.Column="1" ColumnDefinitions="*,36" ColumnSpacing="8">
+                        <ctl:ShareBar Height="6" VerticalAlignment="Center"
+                                      Value="{Binding Share}" Fill="{Binding Series}"
+                                      Background="{StaticResource SlRaised}" />
+                        <TextBlock Grid.Column="1" Classes="caption mono" Text="{Binding ShareText}"
+                                   HorizontalAlignment="Right" VerticalAlignment="Center" />
+                      </Grid>
+
+                      <TextBlock Grid.Column="2" Classes="mono" FontSize="{StaticResource SlTextSmall}"
+                                 Text="{Binding SizeText}" HorizontalAlignment="Right" VerticalAlignment="Center" />
+
+                      <ctl:Icon Grid.Column="4" Width="16" Height="16" VerticalAlignment="Center"
+                                Data="{StaticResource IconChevronRight}" Foreground="{StaticResource SlAccent}"
+                                IsVisible="{Binding CanOpen}" />
+                    </Grid>
+                  </Button>
+
+                  <Button Theme="{StaticResource IconButton}" Command="{Binding Target.ExplorerCommand, FallbackValue={x:Null}}" IsVisible="{Binding CanReveal}"
+                          HorizontalAlignment="Right" VerticalAlignment="Center" Margin="0,0,56,0" Width="28"
+                          ToolTip.Tip="{Binding Target.ExplorerText, FallbackValue=''}"
+                          AutomationProperties.Name="{Binding Target.ExplorerText, FallbackValue=''}">
+                    <ctl:Icon Width="16" Height="16" Data="{StaticResource IconFolderOpen}" />
+                  </Button>
+                </Grid>
+              </DataTemplate>
+            </ItemsControl.ItemTemplate>
+          </ItemsControl>
+
+          <TextBlock Grid.Row="1" Classes="caption" Margin="24" HorizontalAlignment="Center" VerticalAlignment="Top"
+                     TextWrapping="Wrap" TextAlignment="Center" MaxWidth="560"
+                     Text="{Binding EmptyText}" IsVisible="{Binding IsEmpty}" />
+        </Grid>
+      </Border>
+    </Grid>
+  </Grid>
+
+    <!-- ========== Confirmation (components.md → Dialogs) ========== -->
+    <Border Background="{StaticResource SlScrim}" IsVisible="{Binding HasConfirmation}">
+      <Border Classes="dialog" Width="480" HorizontalAlignment="Center" VerticalAlignment="Center">
+        <StackPanel Spacing="16">
+          <ctl:CapsText Classes="dialog-title" Value="{Binding Confirmation.Title, FallbackValue=''}" TextWrapping="Wrap" />
+          <TextBlock Text="{Binding Confirmation.Message, FallbackValue=''}" TextWrapping="Wrap" />
+          <Border Classes="callout danger" IsVisible="{Binding Confirmation.HasWarning, FallbackValue=False}">
+            <Grid ColumnDefinitions="Auto,*" ColumnSpacing="8">
+              <ctl:Icon Classes="status" Width="16" Height="16" VerticalAlignment="Top" Data="{StaticResource IconWarning}" />
+              <TextBlock Grid.Column="1" Text="{Binding Confirmation.Warning, FallbackValue=''}" TextWrapping="Wrap" FontSize="{StaticResource SlTextSmall}" />
+            </Grid>
+          </Border>
+          <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Right">
+            <Button x:Name="ConfirmCancel" Theme="{StaticResource SoftButton}" Command="{Binding Confirmation.CancelCommand, FallbackValue={x:Null}}"
+                    Content="Cancel" IsCancel="True" />
+            <Button Theme="{StaticResource DangerButton}" Command="{Binding Confirmation.ConfirmCommand, FallbackValue={x:Null}}">
+              <StackPanel Orientation="Horizontal" Spacing="6">
+                <ctl:Icon Width="14" Height="14" Data="{StaticResource IconTrash}" />
+                <TextBlock Text="{Binding Confirmation.ConfirmText, FallbackValue=''}" VerticalAlignment="Center" />
+              </StackPanel>
+            </Button>
+          </StackPanel>
+        </StackPanel>
+      </Border>
+    </Border>
+  </Panel>
+</UserControl>

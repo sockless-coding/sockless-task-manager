@@ -24,7 +24,7 @@ Sockless Task Manager is a lightweight Windows Task Manager alternative: .NET 11
 src/SocklessTaskManager/
   App.axaml(.cs)        composition root: the list of top-level features
   Core/                 the small shared kernel: Feature, SampleClock, Navigator, History, Format, interop used by several slices
-  Controls/             reusable visuals: HistoryGraph, GraphFrame, Icon, CapsText, CompositionBar, ShareBar
+  Controls/             reusable visuals: HistoryGraph, GraphFrame, Icon, CapsText, CompositionBar, ShareBar, Treemap
   Theme/                Tokens.axaml (design tokens), Icons.axaml (Heroicons + gear), Controls.axaml (component styles)
   Shell/                main window: sidebar, top bar, page host
   Features/
@@ -56,6 +56,14 @@ src/SocklessTaskManager/
                         once per process). The details pane lists their processes; each opens on the Processes page, and
                         "Show in Processes" opens the page filtered to that user. Without elevation, other users' and services' owners can't be read and
                         are listed as "Not readable".
+    Storage/            a top-level feature: drives, and a scan of one as a treemap (Controls/Treemap) over a table to
+                        drill into. DiskScan lists folders with GetFileInformationByHandleEx (allocation sizes, no
+                        junctions followed) on a few below-normal threads; elevated, it enables SeBackupPrivilege.
+                        To stay light, a folder under ~1/20,000 of the drive's used space keeps only its totals once
+                        counted (IsSummary) and is read again when opened; only the 50 largest files per folder are
+                        kept by name. "Rescan folder" re-reads one folder and splices it into the tree.
+                        Treemap boxes and rows share a context menu (StorageTarget); deletes go through SHFileOperationW
+                        on an STA thread after a Confirmation, then come out of the tree without a rescan.
     Updates/            not a page: the top bar's update offer. Reads the latest tag from GitHub's /releases/latest
                         redirect, downloads the release zip, checks its .sha256, renames running files to .old and
                         moves the new ones in, then restarts. Local builds are version 0.0.0 and never check;

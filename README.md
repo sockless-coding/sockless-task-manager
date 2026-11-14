@@ -36,7 +36,9 @@ The **Memory** page shows what the RAM is holding and lets you drill into each p
 
 It only reads what the level on screen needs, and only while the page is visible. Address-space and driver-file scans run once when opened, with a Refresh button.
 
-Data comes from Windows APIs: performance counters via PDH, `GlobalMemoryStatusEx`, SMBIOS, storage IOCTLs and DXGI, plus `NtQuerySystemInformation` and process working-set queries for the Processes and Memory pages. No WMI, no admin rights; run as administrator to end or change other users' processes, to trace every process that starts and ends (ETW), and to inspect elevated processes' address spaces.
+The **Storage** page lists the drives and, when you open one, scans it to show what takes the space: a treemap of the folder you're in, with each folder's contents nested inside it two levels deep, above a table of its folders and files, largest first. Point at a box or row for its path, counts and largest contents; select a folder in either (nested ones too) to drill in. Right-click a box or row to open it, show it in File Explorer, copy its path, see its Properties, rescan it, or delete it (to the Recycle Bin, or permanently). Deletes ask first, and core folders (Windows, Program Files, ProgramData, user profiles) can't be deleted from here. Sizes are space on disk, so cloud placeholders and compressed files count for what they really use; space the scan can't attribute (file system metadata, restore points, folders it can't read) is shown as "System and unreadable". Run as administrator to read every folder.
+
+Data comes from Windows APIs: performance counters via PDH, `GlobalMemoryStatusEx`, SMBIOS, storage IOCTLs and DXGI, plus `NtQuerySystemInformation` and process working-set queries for the Processes and Memory pages, and directory listings (`GetFileInformationByHandleEx`) for the Storage page. No WMI, no admin rights; run as administrator to end or change other users' processes, to trace every process that starts and ends (ETW), and to inspect elevated processes' address spaces.
 
 ## Footprint
 

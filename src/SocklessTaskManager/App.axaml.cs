@@ -5,6 +5,7 @@ using Sockless.TaskManager.Core;
 using Sockless.TaskManager.Features.Memory;
 using Sockless.TaskManager.Features.Performance;
 using Sockless.TaskManager.Features.Processes;
+using Sockless.TaskManager.Features.Storage;
 using Sockless.TaskManager.Features.Updates;
 using Sockless.TaskManager.Features.Users;
 using Sockless.TaskManager.Shell;
@@ -29,6 +30,7 @@ public sealed class App : Application
                 new ProcessesFeature(clock, navigator),
                 PerformanceModule.Create(clock),
                 new MemoryFeature(clock, navigator),
+                new StorageFeature(clock),
                 new UsersFeature(clock, navigator),
             ];
 
