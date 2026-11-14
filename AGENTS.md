@@ -64,13 +64,31 @@ src/SocklessTaskManager/
                         kept by name. "Rescan folder" re-reads one folder and splices it into the tree.
                         Treemap boxes and rows share a context menu (StorageTarget); deletes go through SHFileOperationW
                         on an STA thread after a Confirmation, then come out of the tree without a rescan.
+    Network/            a top-level feature: open connections, listening ports (with who can reach them), a history of
+                        every connection seen while monitoring, and processes with their traffic. NetworkMonitor keeps
+                        the record on the sampling thread (TCP/UDP tables via GetExtendedTcpTable/UdpTable, the
+                        "owner module" classes) and publishes only what changed; NetworkPage mirrors it on the UI
+                        thread and renders the view on screen (at most 1,000 rows). Elevated, NetworkTrace adds
+                        traffic, sub-second connections and UDP (Microsoft-Windows-Kernel-Network), DNS answers
+                        (DNS-Client 3008) and process starts. Things to know:
+                        - Kernel-Network doesn't reliably say which end is local; the monitor orients each flow
+                          against the socket table, then this computer's addresses.
+                        - Some Windows builds report TCP state 0 for many sockets: no state and no remote end
+                          means listening.
+                        - Host names: DNS answers (cache via the undocumented DnsGetCacheDataTable, or the trace)
+                          beat reverse lookups, which are optional because they send queries.
+                        - Geo data never ships. GeoDatabase is a hand-written, memory-mapped .mmdb reader
+                          (DB-IP, GeoLite2, IPinfo); GeoLocator downloads DB-IP Lite or imports a file into
+                          %LOCALAPPDATA%\Sockless Task Manager\GeoIP. Show DB-IP's attribution where its data is shown.
+                        - Monitoring runs only while the page is shown, or in the background for watched process
+                          names or everything (network.ini); otherwise it costs nothing.
     Updates/            not a page: the top bar's update offer. Reads the latest tag from GitHub's /releases/latest
                         redirect, downloads the release zip, checks its .sha256, renames running files to .old and
                         moves the new ones in, then restarts. Local builds are version 0.0.0 and never check;
                         the asset names must match release.yml.
 ```
 
-A slice owns everything it needs: native calls, sensor, view model and view. Slices don't reference each other. Code moves into `Core/` only when a second slice needs it (PDH, `GetPerformanceInfo` and `NtQuerySystemInformation` with its process-list parser are there for that reason, as are `Accounts` (process token owners), `Elevation` and `Confirmation`, shared by Processes and Users, and `AddressSpace`, shared by Processes and Memory).
+A slice owns everything it needs: native calls, sensor, view model and view. Slices don't reference each other. Code moves into `Core/` only when a second slice needs it (PDH, `GetPerformanceInfo` and `NtQuerySystemInformation` with its process-list parser are there for that reason, as are `Accounts` (process token owners), `Elevation` and `Confirmation`, shared by Processes and Users, `AddressSpace`, shared by Processes and Memory, and `EtwSession` (a real-time ETW session) with the kernel's process-start event, shared by Processes and Network).
 
 When one slice needs to show another's page, it goes through `Core/Navigator.cs`: Users and Memory call `ShowProcesses(new ProcessQuery(...))`, the Processes feature applies it and calls `Open(this)`, and the shell selects it. Pages may list processes in their own terms (shares of memory, a user's processes), but a process's details, actions and drill-downs live only on the Processes page: a row elsewhere opens it there rather than growing details of its own. If a page needs more than `ProcessQuery` offers, add it there.
 

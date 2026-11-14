@@ -1,7 +1,7 @@
 using System.Buffers.Binary;
 using System.Collections.Concurrent;
-using System.Runtime.InteropServices;
 using System.Text;
+using Sockless.TaskManager.Core.Interop;
 
 namespace Sockless.TaskManager.Features.Processes;
 
@@ -26,67 +26,18 @@ internal readonly record struct TracedExit(
 /// so it only runs elevated. Events arrive on the trace thread, at most a second late (the flush
 /// timer); exits are queued for the UI thread.
 /// </summary>
-internal sealed unsafe partial class ProcessTrace : IDisposable
+internal sealed unsafe class ProcessTrace : EtwSession
 {
     private const string SessionName = "Sockless Task Manager process trace";
-    private static readonly Guid KernelProcessProvider = new("22fb2cd6-0e7b-422b-a0c7-2fad1fd0e716");
-    private const ulong KeywordProcess = 0x10;
-    private const byte LevelInformation = 4;
-
-    private const uint ErrorAlreadyExists = 183;
-    private const uint ControlStop = 1;
-    private const uint EnableProvider = 1;
-    private const ulong InvalidTrace = ulong.MaxValue;
-
-    // EVENT_TRACE_PROPERTIES (x64), with the session name stored after it.
-    private const int PropertiesSize = 0x78;
-    private const int PropertiesTotal = PropertiesSize + 1024;
-    private const int WnodeBufferSize = 0x00;
-    private const int WnodeClientContext = 0x28;
-    private const int WnodeFlags = 0x2C;
-    private const int PropLogFileMode = 0x40;
-    private const int PropFlushTimer = 0x44;
-    private const int PropLoggerNameOffset = 0x74;
-    private const uint WnodeFlagTracedGuid = 0x00020000;
-    private const uint RealTimeMode = 0x00000100;
-    private const uint ClientContextQpc = 1;
-
-    // EVENT_TRACE_LOGFILEW (x64).
-    private const int LogFileSize = 0x1C0;
-    private const int LogFileLoggerName = 0x08;
-    private const int LogFileProcessTraceMode = 0x1C;
-    private const int LogFileEventRecordCallback = 0x1A8;
-    private const int LogFileContext = 0x1B8;
-    private const uint ProcessTraceRealTime = 0x00000100;
-    private const uint ProcessTraceEventRecord = 0x10000000;
-
-    // EVENT_RECORD (x64).
-    private const int RecordProviderId = 0x18;
-    private const int RecordEventId = 0x28;
-    private const int RecordEventVersion = 0x2A;
-    private const int RecordUserDataLength = 0x56;
-    private const int RecordUserData = 0x60;
-    private const int RecordUserContext = 0x68;
-
-    private const ushort EventProcessStart = 1;
-    private const ushort EventProcessStop = 2;
 
     private readonly ConcurrentQueue<TracedExit> _exits = new();
     private readonly Dictionary<ProcessKey, Started> _starts = [];
     private readonly List<(string Device, string Drive)> _devices = DeviceMap();
-    private GCHandle _self;
-    private ulong _session;
-    private ulong _trace = InvalidTrace;
-    private nint _loggerName;
-    private Thread? _thread;
-    private volatile bool _isRunning;
 
     private ProcessTrace()
+        : base(SessionName)
     {
     }
-
-    /// <summary>False once the session is gone: stopped from outside, or by a second copy of this app.</summary>
-    public bool IsRunning => _isRunning;
 
     /// <summary>Starts the session, or returns null without administrator rights or if ETW refuses.</summary>
     public static ProcessTrace? TryStart()
@@ -95,14 +46,8 @@ internal sealed unsafe partial class ProcessTrace : IDisposable
             return null;
 
         var trace = new ProcessTrace();
-        try
-        {
-            if (trace.Start())
-                return trace;
-        }
-        catch (Exception ex) when (ex is DllNotFoundException or EntryPointNotFoundException)
-        {
-        }
+        if (trace.Start([new EtwProvider(KernelProcessEvents.Provider, LevelInformation, KernelProcessEvents.KeywordProcess)]))
+            return trace;
 
         trace.Dispose();
         return null;
@@ -110,141 +55,26 @@ internal sealed unsafe partial class ProcessTrace : IDisposable
 
     public bool TryDequeue(out TracedExit exit) => _exits.TryDequeue(out exit);
 
-    private bool Start()
+    protected override void OnEvent(in Guid provider, ushort id, byte version, ReadOnlySpan<byte> data)
     {
-        var properties = (byte*)NativeMemory.AllocZeroed(PropertiesTotal);
-        try
+        if (provider != KernelProcessEvents.Provider)
+            return;
+
+        switch (id)
         {
-            fixed (char* name = SessionName)
-            {
-                FillProperties(properties);
-                var status = StartTrace(out _session, name, properties);
-                if (status == ErrorAlreadyExists)
-                {
-                    // Left over from a copy of the app that didn't shut down cleanly.
-                    FillProperties(properties);
-                    ControlTrace(0, name, properties, ControlStop);
-                    FillProperties(properties);
-                    status = StartTrace(out _session, name, properties);
-                }
-
-                if (status != 0)
-                {
-                    _session = 0;
-                    return false;
-                }
-            }
-
-            var provider = KernelProcessProvider;
-            if (EnableTraceEx2(_session, &provider, EnableProvider, LevelInformation, KeywordProcess, 0, 0, null) != 0)
-                return false;
-        }
-        finally
-        {
-            NativeMemory.Free(properties);
-        }
-
-        _self = GCHandle.Alloc(this);
-        _loggerName = Marshal.StringToHGlobalUni(SessionName);
-        var logFile = (byte*)NativeMemory.AllocZeroed(LogFileSize);
-        try
-        {
-            *(nint*)(logFile + LogFileLoggerName) = _loggerName;
-            *(uint*)(logFile + LogFileProcessTraceMode) = ProcessTraceRealTime | ProcessTraceEventRecord;
-            *(nint*)(logFile + LogFileEventRecordCallback) = (nint)(delegate* unmanaged<byte*, void>)&OnEvent;
-            *(nint*)(logFile + LogFileContext) = GCHandle.ToIntPtr(_self);
-            _trace = OpenTrace(logFile);
-        }
-        finally
-        {
-            NativeMemory.Free(logFile);
-        }
-
-        if (_trace == InvalidTrace)
-            return false;
-
-        _isRunning = true;
-        _thread = new Thread(Run) { IsBackground = true, Name = "Process trace" };
-        _thread.Start();
-        return true;
-    }
-
-    private static void FillProperties(byte* properties)
-    {
-        new Span<byte>(properties, PropertiesTotal).Clear();
-        *(uint*)(properties + WnodeBufferSize) = PropertiesTotal;
-        *(uint*)(properties + WnodeClientContext) = ClientContextQpc;
-        *(uint*)(properties + WnodeFlags) = WnodeFlagTracedGuid;
-        *(uint*)(properties + PropLogFileMode) = RealTimeMode;
-        *(uint*)(properties + PropFlushTimer) = 1;
-        *(uint*)(properties + PropLoggerNameOffset) = PropertiesSize;
-    }
-
-    private void Run()
-    {
-        var trace = _trace;
-        ProcessTraceEvents(&trace, 1, null, null);
-        _isRunning = false;
-    }
-
-    [UnmanagedCallersOnly]
-    private static void OnEvent(byte* record)
-    {
-        try
-        {
-            var context = *(nint*)(record + RecordUserContext);
-            if (context == 0 || GCHandle.FromIntPtr(context).Target is not ProcessTrace trace)
-                return;
-            if (*(Guid*)(record + RecordProviderId) != KernelProcessProvider)
-                return;
-
-            var data = new ReadOnlySpan<byte>(*(byte**)(record + RecordUserData), *(ushort*)(record + RecordUserDataLength));
-            var version = record[RecordEventVersion];
-            switch (*(ushort*)(record + RecordEventId))
-            {
-                case EventProcessStart:
-                    trace.OnStart(data, version);
-                    break;
-                case EventProcessStop:
-                    trace.OnStop(data, version);
-                    break;
-            }
-        }
-        catch (Exception)
-        {
-            // Never let an exception unwind into ETW. A malformed event is dropped.
+            case KernelProcessEvents.ProcessStart:
+                OnStart(data, version);
+                break;
+            case KernelProcessEvents.ProcessStop:
+                OnStop(data, version);
+                break;
         }
     }
 
-    /// <summary>
-    /// ProcessStart. v0: id, create time, parent, session, image. v1–v2 add flags before the image.
-    /// v3+ add sequence numbers after the ids, and elevation and a SID before the image.
-    /// </summary>
     private void OnStart(ReadOnlySpan<byte> data, byte version)
     {
-        int id, parent, session, image;
-        long created;
-        if (version >= 3)
-        {
-            if (data.Length < 50)
-                return;
-            id = BinaryPrimitives.ReadInt32LittleEndian(data);
-            created = BinaryPrimitives.ReadInt64LittleEndian(data[12..]);
-            parent = BinaryPrimitives.ReadInt32LittleEndian(data[20..]);
-            session = BinaryPrimitives.ReadInt32LittleEndian(data[32..]);
-            image = 48 + 8 + 4 * data[49];
-        }
-        else
-        {
-            id = BinaryPrimitives.ReadInt32LittleEndian(data);
-            created = BinaryPrimitives.ReadInt64LittleEndian(data[4..]);
-            parent = BinaryPrimitives.ReadInt32LittleEndian(data[12..]);
-            session = BinaryPrimitives.ReadInt32LittleEndian(data[16..]);
-            image = version == 0 ? 20 : 24;
-        }
-
-        var path = image < data.Length ? DosPath(Utf16(data[image..])) : null;
-        _starts[new ProcessKey(id, created)] = new Started(parent, session, path);
+        if (KernelProcessEvents.TryReadStart(data, version, out var id, out var created, out var parent, out var session, out var image))
+            _starts[new ProcessKey(id, created)] = new Started(parent, session, DosPath(image));
     }
 
     /// <summary>
@@ -274,14 +104,6 @@ internal sealed unsafe partial class ProcessTrace : IDisposable
             var name = nameAt < data.Length ? Ansi(data[nameAt..]) : null;
             _exits.Enqueue(new TracedExit(key, 0, -1, name, null, exitTime, exitCode, peakCommit));
         }
-    }
-
-    private static string? Utf16(ReadOnlySpan<byte> data)
-    {
-        var chars = MemoryMarshal.Cast<byte, char>(data[..(data.Length & ~1)]);
-        var end = chars.IndexOf('\0');
-        var text = end >= 0 ? chars[..end] : chars;
-        return text.IsEmpty ? null : new string(text);
     }
 
     private static string? Ansi(ReadOnlySpan<byte> data)
@@ -324,53 +146,5 @@ internal sealed unsafe partial class ProcessTrace : IDisposable
         return map;
     }
 
-    public void Dispose()
-    {
-        if (_session != 0)
-        {
-            var properties = (byte*)NativeMemory.AllocZeroed(PropertiesTotal);
-            FillProperties(properties);
-            ControlTrace(_session, null, properties, ControlStop);
-            NativeMemory.Free(properties);
-            _session = 0;
-        }
-
-        if (_trace != InvalidTrace)
-        {
-            CloseTrace(_trace);
-            _trace = InvalidTrace;
-        }
-
-        // Callbacks hold the handle until ProcessTrace returns; if it never does, leak it rather than free it under them.
-        if (_thread is null || _thread.Join(TimeSpan.FromSeconds(2)))
-        {
-            if (_self.IsAllocated)
-                _self.Free();
-            if (_loggerName != 0)
-                Marshal.FreeHGlobal(_loggerName);
-            _loggerName = 0;
-        }
-
-        _isRunning = false;
-    }
-
     private readonly record struct Started(int ParentId, int SessionId, string? Path);
-
-    [LibraryImport("advapi32.dll", EntryPoint = "StartTraceW")]
-    private static partial uint StartTrace(out ulong session, char* name, void* properties);
-
-    [LibraryImport("advapi32.dll", EntryPoint = "ControlTraceW")]
-    private static partial uint ControlTrace(ulong session, char* name, void* properties, uint control);
-
-    [LibraryImport("advapi32.dll")]
-    private static partial uint EnableTraceEx2(ulong session, Guid* provider, uint control, byte level, ulong matchAny, ulong matchAll, uint timeout, void* parameters);
-
-    [LibraryImport("advapi32.dll", EntryPoint = "OpenTraceW")]
-    private static partial ulong OpenTrace(void* logFile);
-
-    [LibraryImport("advapi32.dll", EntryPoint = "ProcessTrace")]
-    private static partial uint ProcessTraceEvents(ulong* traces, uint count, void* start, void* end);
-
-    [LibraryImport("advapi32.dll")]
-    private static partial uint CloseTrace(ulong trace);
 }

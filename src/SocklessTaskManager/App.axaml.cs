@@ -3,6 +3,7 @@ using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Markup.Xaml;
 using Sockless.TaskManager.Core;
 using Sockless.TaskManager.Features.Memory;
+using Sockless.TaskManager.Features.Network;
 using Sockless.TaskManager.Features.Performance;
 using Sockless.TaskManager.Features.Processes;
 using Sockless.TaskManager.Features.Storage;
@@ -31,6 +32,7 @@ public sealed class App : Application
                 PerformanceModule.Create(clock),
                 new MemoryFeature(clock, navigator),
                 new StorageFeature(clock),
+                new NetworkFeature(clock, navigator),
                 new UsersFeature(clock, navigator),
             ];
 

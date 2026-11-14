@@ -1,0 +1,713 @@
+<!--
+  Network page: title and summary, a toolbar (which view, search, watched only, export, settings),
+  callouts for what's missing without administrator rights or a location database, then the
+  table with the selected row's details beside it. Narrow windows show the details over the table
+  instead (code-behind). Closing a connection asks first; settings open in a dialog over the page.
+-->
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:ctl="using:Sockless.TaskManager.Controls"
+             xmlns:net="using:Sockless.TaskManager.Features.Network"
+             x:Class="Sockless.TaskManager.Features.Network.NetworkView"
+             x:DataType="net:NetworkPage">
+
+  <UserControl.Resources>
+    <!-- Column title, plus a direction chevron on the sort column. -->
+    <DataTemplate x:Key="SortHeaderTemplate" x:DataType="net:NetworkColumn">
+      <Button Theme="{StaticResource SortHeader}" Classes.active="{Binding IsActive}" HorizontalAlignment="{Binding Alignment}"
+              Command="{Binding SortCommand}" AutomationProperties.Name="{Binding AccessibleName}">
+        <StackPanel Orientation="Horizontal" Spacing="4">
+          <TextBlock Text="{Binding Title}" />
+          <ctl:Icon Width="12" Height="12" VerticalAlignment="Center" Data="{Binding Glyph}" IsVisible="{Binding IsActive}" />
+        </StackPanel>
+      </Button>
+    </DataTemplate>
+
+    <!-- The details pane (net:NetworkDetails). -->
+    <DataTemplate x:Key="DetailsTemplate" x:DataType="net:NetworkDetails">
+      <Border Classes="card" Padding="0" ClipToBounds="True">
+        <DockPanel>
+          <!-- Header: what it is, its state, and what can be done. -->
+          <Border DockPanel.Dock="Top" Padding="20,16" BorderBrush="{StaticResource SlBorder}" BorderThickness="0,0,0,1">
+            <StackPanel Spacing="14">
+              <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="8">
+                <StackPanel Spacing="2">
+                  <TextBlock Classes="section-title" Text="{Binding Title}" TextWrapping="Wrap" />
+                  <TextBlock Classes="caption" Text="{Binding Subtitle}" IsVisible="{Binding HasSubtitle}"
+                             TextTrimming="CharacterEllipsis" ToolTip.Tip="{Binding Subtitle}" />
+                </StackPanel>
+                <Border Grid.Column="1" Classes="badge" Classes.success="{Binding IsSuccess}" Classes.warning="{Binding IsWarning}"
+                        VerticalAlignment="Top">
+                  <TextBlock Text="{Binding StatusText}" />
+                </Border>
+                <Button Grid.Column="2" Theme="{StaticResource IconButton}" VerticalAlignment="Top"
+                        Command="{Binding CloseCommand}" AutomationProperties.Name="Close details" ToolTip.Tip="Close (Esc)">
+                  <ctl:Icon Width="14" Height="14" Data="{StaticResource IconClose}" />
+                </Button>
+              </Grid>
+
+              <WrapPanel ItemSpacing="8" LineSpacing="8">
+                <Button Theme="{StaticResource SoftButton}" Command="{Binding OpenProcessCommand}" IsEnabled="{Binding CanOpenProcess}"
+                        ToolTip.Tip="The process's details and actions on the Processes page">
+                  <StackPanel Orientation="Horizontal" Spacing="6">
+                    <ctl:Icon Width="14" Height="14" Data="{StaticResource IconProcesses}" />
+                    <TextBlock Text="Open in Processes" VerticalAlignment="Center" />
+                  </StackPanel>
+                </Button>
+                <ToggleButton Theme="{StaticResource SoftToggle}" IsChecked="{Binding IsWatched, Mode=OneWay}"
+                              Command="{Binding WatchCommand}" ToolTip.Tip="{Binding WatchTip}">
+                  <StackPanel Orientation="Horizontal" Spacing="6">
+                    <ctl:Icon Width="14" Height="14" Data="{StaticResource IconEye}" />
+                    <TextBlock Text="{Binding WatchText}" VerticalAlignment="Center" />
+                  </StackPanel>
+                </ToggleButton>
+                <Button Theme="{StaticResource SoftButton}" Command="{Binding CopyCommand}" ToolTip.Tip="{Binding CopyText}"
+                        AutomationProperties.Name="{Binding CopyText}" IsVisible="{Binding !IsProcess}">
+                  <ctl:Icon Width="14" Height="14" Data="{StaticResource IconCopy}" />
+                </Button>
+                <Button Theme="{StaticResource DangerButton}" Command="{Binding CloseConnectionCommand}" IsVisible="{Binding CanCloseConnection}"
+                        ToolTip.Tip="Reset this connection">
+                  <StackPanel Orientation="Horizontal" Spacing="6">
+                    <ctl:Icon Width="14" Height="14" Data="{StaticResource IconEnd}" />
+                    <TextBlock Text="Close connection" VerticalAlignment="Center" />
+                  </StackPanel>
+                </Button>
+              </WrapPanel>
+
+              <Button Theme="{StaticResource LinkButton}" Command="{Binding ShowConnectionsCommand}" HorizontalAlignment="Left"
+                      ToolTip.Tip="Everything this process has connected to while monitored">
+                <StackPanel Orientation="Horizontal" Spacing="4">
+                  <TextBlock Text="All of this process's connections" FontSize="{StaticResource SlTextSmall}" VerticalAlignment="Center" />
+                  <ctl:Icon Width="14" Height="14" Data="{StaticResource IconChevronRight}" />
+                </StackPanel>
+              </Button>
+
+              <TextBlock Classes="caption" Text="{Binding CloseHint}" IsVisible="{Binding HasCloseHint}" TextWrapping="Wrap" />
+              <Button Theme="{StaticResource LinkButton}" Command="{Binding RestartElevatedCommand}" HorizontalAlignment="Left"
+                      IsVisible="{Binding OfferElevation}">
+                <StackPanel Orientation="Horizontal" Spacing="4">
+                  <ctl:Icon Width="14" Height="14" Data="{StaticResource IconShield}" />
+                  <TextBlock Text="Closing a connection needs administrator rights: restart as administrator" FontSize="{StaticResource SlTextSmall}"
+                             TextWrapping="Wrap" VerticalAlignment="Center" />
+                </StackPanel>
+              </Button>
+
+              <Border Classes="callout" Classes.danger="{Binding MessageIsError}" IsVisible="{Binding HasMessage}">
+                <Grid ColumnDefinitions="Auto,*" ColumnSpacing="8">
+                  <ctl:Icon Classes="status" Width="16" Height="16" VerticalAlignment="Top"
+                            Data="{StaticResource IconWarning}" IsVisible="{Binding MessageIsError}" />
+                  <TextBlock Grid.Column="1" Text="{Binding Message}" TextWrapping="Wrap" FontSize="{StaticResource SlTextSmall}" />
+                </Grid>
+              </Border>
+            </StackPanel>
+          </Border>
+
+          <!-- Graph and facts, then the related list, which takes the rest of the height and scrolls. -->
+          <Grid RowDefinitions="Auto,Auto,Auto,Auto,*" Margin="20,14,20,0">
+            <StackPanel Spacing="6" Margin="0,0,0,14">
+              <StackPanel.IsVisible>
+                <MultiBinding Converter="{x:Static BoolConverters.And}">
+                  <Binding Path="IsProcess" />
+                  <Binding Path="HasGraph" />
+                </MultiBinding>
+              </StackPanel.IsVisible>
+              <ctl:GraphFrame Caption="Throughput" Scale="{Binding Scale}" Height="140">
+                <ctl:HistoryGraph Series="{Binding Receive}" SecondarySeries="{Binding Send}" Maximum="{Binding Maximum}"
+                                  Stroke="{StaticResource SlSeries4}" SecondaryStroke="{StaticResource SlSeries3}" />
+              </ctl:GraphFrame>
+              <TextBlock Classes="caption" Text="Receive: solid line. Send: dashed line." />
+            </StackPanel>
+
+            <ItemsControl Grid.Row="1" ItemsSource="{Binding Facts}" Margin="0,0,0,10">
+              <ItemsControl.ItemTemplate>
+                <DataTemplate x:DataType="net:NetworkFact">
+                  <Grid ColumnDefinitions="104,*" ColumnSpacing="8" Margin="0,3">
+                    <TextBlock Classes="caption" Text="{Binding Label}" />
+                    <SelectableTextBlock Grid.Column="1" Text="{Binding Value}" TextWrapping="Wrap"
+                                         FontFamily="{StaticResource SlFontMono}" FontSize="{StaticResource SlTextSmall}"
+                                         SelectionBrush="{StaticResource SlAccentTint30}" />
+                  </Grid>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+
+            <TextBlock Grid.Row="2" Classes="caption" Text="{Binding Attribution}" IsVisible="{Binding HasAttribution}"
+                       TextWrapping="Wrap" Margin="0,0,0,10" />
+
+            <ctl:CapsText Grid.Row="3" Classes="label" Value="{Binding RelatedTitle}" IsVisible="{Binding HasRelatedTitle}" Margin="0,0,0,6" />
+
+            <ItemsControl Grid.Row="4" ItemsSource="{Binding Related}" AutomationProperties.Name="{Binding RelatedTitle}">
+              <ItemsControl.Template>
+                <ControlTemplate>
+                  <ScrollViewer HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
+                    <ItemsPresenter Name="PART_ItemsPresenter" ItemsPanel="{TemplateBinding ItemsPanel}" />
+                  </ScrollViewer>
+                </ControlTemplate>
+              </ItemsControl.Template>
+              <ItemsControl.ItemsPanel>
+                <ItemsPanelTemplate>
+                  <VirtualizingStackPanel />
+                </ItemsPanelTemplate>
+              </ItemsControl.ItemsPanel>
+              <ItemsControl.ItemTemplate>
+                <DataTemplate x:DataType="net:RelatedLine">
+                  <Button Theme="{StaticResource TableRow}" Padding="8,4" Margin="0,0,12,0"
+                          Command="{Binding OpenCommand}" ToolTip.Tip="Show in History"
+                          AutomationProperties.Name="{Binding AccessibleName}">
+                    <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                      <StackPanel Spacing="1">
+                        <TextBlock Classes="cell" Text="{Binding Primary}" />
+                        <TextBlock Classes="caption" Text="{Binding Secondary}" TextTrimming="CharacterEllipsis" />
+                      </StackPanel>
+                      <TextBlock Grid.Column="1" Classes="number secondary" Text="{Binding Value}" VerticalAlignment="Top" />
+                    </Grid>
+                  </Button>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+          </Grid>
+        </DockPanel>
+      </Border>
+    </DataTemplate>
+  </UserControl.Resources>
+
+  <UserControl.Styles>
+    <Style Selector="TextBlock.cell">
+      <Setter Property="FontSize" Value="{StaticResource SlTextSmall}" />
+      <Setter Property="VerticalAlignment" Value="Center" />
+      <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+    </Style>
+    <Style Selector="TextBlock.number">
+      <Setter Property="FontFamily" Value="{StaticResource SlFontMono}" />
+      <Setter Property="FontSize" Value="{StaticResource SlTextSmall}" />
+      <Setter Property="HorizontalAlignment" Value="Right" />
+      <Setter Property="VerticalAlignment" Value="Center" />
+    </Style>
+    <Style Selector="TextBlock.mono-cell">
+      <Setter Property="FontFamily" Value="{StaticResource SlFontMono}" />
+      <Setter Property="FontSize" Value="{StaticResource SlTextSmall}" />
+      <Setter Property="VerticalAlignment" Value="Center" />
+      <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+    </Style>
+    <Style Selector="TextBlock.caption.mono-caption">
+      <Setter Property="FontFamily" Value="{StaticResource SlFontMono}" />
+    </Style>
+    <Style Selector="Button.selected TextBlock.name">
+      <Setter Property="FontWeight" Value="SemiBold" />
+    </Style>
+  </UserControl.Styles>
+
+  <Panel>
+    <Grid RowDefinitions="Auto,Auto,Auto,Auto,*" Margin="{StaticResource SlContentPadding}" IsEnabled="{Binding !HasDialog}">
+      <StackPanel Spacing="4" Margin="0,0,0,16">
+        <TextBlock Classes="page-title" Text="Network" />
+        <TextBlock Classes="secondary" Text="{Binding Summary}" TextWrapping="Wrap" />
+      </StackPanel>
+
+      <!-- ========== Toolbar ========== -->
+      <Grid Grid.Row="1" ColumnSpacing="16" Margin="0,0,0,12">
+        <Grid.ColumnDefinitions>
+          <ColumnDefinition Width="Auto" />
+          <ColumnDefinition Width="*" MaxWidth="340" />
+          <ColumnDefinition Width="Auto" />
+          <ColumnDefinition Width="*" />
+          <ColumnDefinition Width="Auto" />
+        </Grid.ColumnDefinitions>
+        <StackPanel Orientation="Horizontal" Spacing="4" VerticalAlignment="Center" AutomationProperties.Name="Show">
+          <RadioButton Theme="{StaticResource SegmentButton}" GroupName="NetworkTab" Content="Connections"
+                       IsChecked="{Binding IsConnectionsView}" ToolTip.Tip="Connections open now" />
+          <RadioButton Theme="{StaticResource SegmentButton}" GroupName="NetworkTab" Content="History"
+                       IsChecked="{Binding IsHistoryView}" ToolTip.Tip="Every connection seen while monitoring, closed ones included" />
+          <RadioButton Theme="{StaticResource SegmentButton}" GroupName="NetworkTab" Content="Listening"
+                       IsChecked="{Binding IsListeningView}" ToolTip.Tip="Ports processes wait on for others to connect" />
+          <RadioButton Theme="{StaticResource SegmentButton}" GroupName="NetworkTab" Content="Processes"
+                       IsChecked="{Binding IsProcessesView}" ToolTip.Tip="Each process's connections and traffic" />
+        </StackPanel>
+
+        <TextBox Grid.Column="1" x:Name="Search" VerticalContentAlignment="Center"
+                 Text="{Binding SearchText}" PlaceholderText="{Binding SearchHint}"
+                 AutomationProperties.Name="Search" ToolTip.Tip="{Binding SearchHelp}">
+          <TextBox.InnerLeftContent>
+            <ctl:Icon Width="16" Height="16" Margin="10,0,0,0" Foreground="{StaticResource SlTextSecondary}"
+                      Data="{StaticResource IconSearch}" />
+          </TextBox.InnerLeftContent>
+          <TextBox.InnerRightContent>
+            <Button Theme="{StaticResource IconButton}" Margin="0,0,4,0" IsVisible="{Binding HasSearch}"
+                    Command="{Binding ClearSearchCommand}" AutomationProperties.Name="Clear search">
+              <ctl:Icon Width="14" Height="14" Data="{StaticResource IconClose}" />
+            </Button>
+          </TextBox.InnerRightContent>
+        </TextBox>
+
+        <ToggleButton Grid.Column="2" Theme="{StaticResource SoftToggle}" IsChecked="{Binding WatchedOnly}" VerticalAlignment="Center"
+                      ToolTip.Tip="{Binding WatchedTip}">
+          <StackPanel Orientation="Horizontal" Spacing="6">
+            <ctl:Icon Width="14" Height="14" Data="{StaticResource IconEye}" />
+            <TextBlock Text="Watched" VerticalAlignment="Center" />
+          </StackPanel>
+        </ToggleButton>
+
+        <StackPanel Grid.Column="4" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+          <Button Theme="{StaticResource SoftButton}" Command="{Binding ClearHistoryCommand}" IsVisible="{Binding IsHistoryView}"
+                  IsEnabled="{Binding CanClearHistory}" ToolTip.Tip="Forget closed connections; open ones stay">
+            <StackPanel Orientation="Horizontal" Spacing="6">
+              <ctl:Icon Width="14" Height="14" Data="{StaticResource IconTrash}" />
+              <TextBlock Text="Clear" VerticalAlignment="Center" />
+            </StackPanel>
+          </Button>
+          <Button Theme="{StaticResource SoftButton}" Command="{Binding ExportCommand}"
+                  ToolTip.Tip="Save everything this view matches as a CSV file">
+            <StackPanel Orientation="Horizontal" Spacing="6">
+              <ctl:Icon Width="14" Height="14" Data="{StaticResource IconDownload}" />
+              <TextBlock Text="Export" VerticalAlignment="Center" />
+            </StackPanel>
+          </Button>
+          <Button Theme="{StaticResource SoftButton}" Command="{Binding OpenSettingsCommand}"
+                  ToolTip.Tip="Recording in the background, host names and locations">
+            <StackPanel Orientation="Horizontal" Spacing="6">
+              <ctl:Icon Width="14" Height="14" Data="{StaticResource IconAdjustments}" />
+              <TextBlock Text="Settings" VerticalAlignment="Center" />
+            </StackPanel>
+          </Button>
+        </StackPanel>
+      </Grid>
+
+      <!-- ========== Filter chips: the view's groups; chips in a group widen, groups narrow ========== -->
+      <Grid Grid.Row="2" ColumnDefinitions="*,Auto" ColumnSpacing="16" Margin="0,0,0,12">
+        <ItemsControl ItemsSource="{Binding Filters}" AutomationProperties.Name="Filters">
+          <ItemsControl.ItemsPanel>
+            <ItemsPanelTemplate>
+              <WrapPanel ItemSpacing="20" LineSpacing="8" />
+            </ItemsPanelTemplate>
+          </ItemsControl.ItemsPanel>
+          <ItemsControl.ItemTemplate>
+            <DataTemplate x:DataType="net:FilterGroup">
+              <StackPanel Orientation="Horizontal" Spacing="8">
+                <TextBlock Classes="caption" Text="{Binding Title}" VerticalAlignment="Center" />
+                <ItemsControl ItemsSource="{Binding Chips}" AutomationProperties.Name="{Binding Title}">
+                  <ItemsControl.ItemsPanel>
+                    <ItemsPanelTemplate>
+                      <StackPanel Orientation="Horizontal" Spacing="4" />
+                    </ItemsPanelTemplate>
+                  </ItemsControl.ItemsPanel>
+                  <ItemsControl.ItemTemplate>
+                    <DataTemplate x:DataType="net:FilterChip">
+                      <ToggleButton Theme="{StaticResource ChipToggle}" FontFamily="{StaticResource SlFontBody}" Padding="8,3"
+                                    IsChecked="{Binding IsChecked}" Content="{Binding Label}" ToolTip.Tip="{Binding Tip}" />
+                    </DataTemplate>
+                  </ItemsControl.ItemTemplate>
+                </ItemsControl>
+              </StackPanel>
+            </DataTemplate>
+          </ItemsControl.ItemTemplate>
+        </ItemsControl>
+        <Button Grid.Column="1" Theme="{StaticResource LinkButton}" VerticalAlignment="Center"
+                Command="{Binding ClearFiltersCommand}" IsVisible="{Binding HasActiveFilters}">
+          <TextBlock Text="Clear filters" FontSize="{StaticResource SlTextSmall}" />
+        </Button>
+      </Grid>
+
+      <!-- ========== Callouts ========== -->
+      <StackPanel Grid.Row="3" Spacing="8" Margin="0,0,0,12">
+        <StackPanel.IsVisible>
+          <MultiBinding Converter="{x:Static BoolConverters.Or}">
+            <Binding Path="HasHint" />
+            <Binding Path="ShowGeoHint" />
+            <Binding Path="HasNotice" />
+          </MultiBinding>
+        </StackPanel.IsVisible>
+
+        <!-- Without elevation there is no trace: say what's missing, and how to get it. -->
+        <Border Classes="callout info" IsVisible="{Binding HasHint}">
+          <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="10">
+            <ctl:Icon Classes="status" Width="16" Height="16" VerticalAlignment="Top" Data="{StaticResource IconShield}" />
+            <TextBlock Grid.Column="1" Text="{Binding Hint}" TextWrapping="Wrap" FontSize="{StaticResource SlTextSmall}" />
+            <Button Grid.Column="2" Theme="{StaticResource LinkButton}" VerticalAlignment="Top" Command="{Binding RestartElevatedCommand}"
+                    IsVisible="{Binding OfferElevation}">
+              <TextBlock Text="Restart as administrator" FontSize="{StaticResource SlTextSmall}" />
+            </Button>
+          </Grid>
+        </Border>
+
+        <!-- No location data ships with the app: offer to add some, once. -->
+        <Border Classes="callout" IsVisible="{Binding ShowGeoHint}">
+          <Grid ColumnDefinitions="Auto,*,Auto,Auto" ColumnSpacing="10">
+            <ctl:Icon Classes="status" Width="16" Height="16" VerticalAlignment="Top" Data="{StaticResource IconGlobe}" />
+            <TextBlock Grid.Column="1" TextWrapping="Wrap" FontSize="{StaticResource SlTextSmall}"
+                       Text="To see where addresses are and which network owns them, add a location database. None is included; you choose one to download in Settings." />
+            <Button Grid.Column="2" Theme="{StaticResource LinkButton}" VerticalAlignment="Top" Command="{Binding OpenSettingsCommand}">
+              <TextBlock Text="Choose a database" FontSize="{StaticResource SlTextSmall}" />
+            </Button>
+            <Button Grid.Column="3" Theme="{StaticResource IconButton}" VerticalAlignment="Top" Command="{Binding DismissGeoHintCommand}"
+                    AutomationProperties.Name="Dismiss" ToolTip.Tip="Don't show this again">
+              <ctl:Icon Width="14" Height="14" Data="{StaticResource IconClose}" />
+            </Button>
+          </Grid>
+        </Border>
+
+        <Border Classes="callout" IsVisible="{Binding HasNotice}">
+          <TextBlock Text="{Binding Notice}" TextWrapping="Wrap" FontSize="{StaticResource SlTextSmall}" />
+        </Border>
+      </StackPanel>
+
+      <Grid Grid.Row="4" x:Name="Body" ColumnDefinitions="*,Auto">
+        <Border Classes="card" Padding="0" ClipToBounds="True">
+          <DockPanel>
+            <TextBlock DockPanel.Dock="Bottom" Classes="caption" Margin="24,8" Text="{Binding RowsNote}" IsVisible="{Binding HasRowsNote}" />
+
+            <Panel>
+              <!-- ========== Connections and History ========== -->
+              <ScrollViewer x:Name="ConnectionScroller" HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled" IsVisible="{Binding IsConnectionTable}">
+                <Grid x:Name="ConnectionTable" RowDefinitions="Auto,*" MinWidth="1140">
+                  <Border Classes="table-header">
+                    <Grid ColumnDefinitions="1.1*,76,160,1.4*,1.1*,100,92,92,84" ColumnSpacing="14">
+                      <ContentControl Content="{Binding Columns.Process}" ContentTemplate="{StaticResource SortHeaderTemplate}" />
+                      <ContentControl Grid.Column="1" Content="{Binding Columns.Protocol}" ContentTemplate="{StaticResource SortHeaderTemplate}" />
+                      <ContentControl Grid.Column="2" Content="{Binding Columns.Local}" ContentTemplate="{StaticResource SortHeaderTemplate}" />
+                      <ContentControl Grid.Column="3" Content="{Binding Columns.Remote}" ContentTemplate="{StaticResource SortHeaderTemplate}" />
+                      <ContentControl Grid.Column="4" Content="{Binding Columns.Location}" ContentTemplate="{StaticResource SortHeaderTemplate}" />
+                      <ContentControl Grid.Column="5" Content="{Binding Columns.State}" ContentTemplate="{StaticResource SortHeaderTemplate}" />
+                      <ContentControl Grid.Column="6" Content="{Binding Columns.Sent}" ContentTemplate="{StaticResource SortHeaderTemplate}" HorizontalAlignment="Right" />
+                      <ContentControl Grid.Column="7" Content="{Binding Columns.Received}" ContentTemplate="{StaticResource SortHeaderTemplate}" HorizontalAlignment="Right" />
+                      <ContentControl Grid.Column="8" Content="{Binding Columns.Seen}" ContentTemplate="{StaticResource SortHeaderTemplate}" HorizontalAlignment="Right" />
+                    </Grid>
+                  </Border>
+
+                  <ItemsControl Grid.Row="1" ItemsSource="{Binding ConnectionRows}" AutomationProperties.Name="Connections">
+                    <ItemsControl.Template>
+                      <ControlTemplate>
+                        <ScrollViewer HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
+                          <ItemsPresenter Name="PART_ItemsPresenter" ItemsPanel="{TemplateBinding ItemsPanel}" />
+                        </ScrollViewer>
+                      </ControlTemplate>
+                    </ItemsControl.Template>
+                    <ItemsControl.ItemsPanel>
+                      <ItemsPanelTemplate>
+                        <VirtualizingStackPanel />
+                      </ItemsPanelTemplate>
+                    </ItemsControl.ItemsPanel>
+                    <ItemsControl.ItemTemplate>
+                      <DataTemplate x:DataType="net:ConnectionRow">
+                        <Button Theme="{StaticResource SelectableRow}" Padding="24,5" Classes.selected="{Binding IsSelected}"
+                                Command="{Binding SelectCommand}" AutomationProperties.Name="{Binding AccessibleName}">
+                          <Grid ColumnDefinitions="1.1*,76,160,1.4*,1.1*,100,92,92,84" ColumnSpacing="14">
+                            <StackPanel Spacing="1" VerticalAlignment="Center">
+                              <TextBlock Classes="cell name" Text="{Binding ProcessName}" ToolTip.Tip="{Binding ProcessName}" />
+                              <TextBlock Classes="caption" Text="{Binding ProcessCaption}" TextTrimming="CharacterEllipsis"
+                                         ToolTip.Tip="{Binding ProcessCaption}" />
+                            </StackPanel>
+                            <StackPanel Grid.Column="1" Spacing="1" VerticalAlignment="Center">
+                              <TextBlock Classes="cell" Text="{Binding ProtocolText}" />
+                              <TextBlock Classes="caption" Text="{Binding DirectionText}" />
+                            </StackPanel>
+                            <TextBlock Grid.Column="2" Classes="mono-cell secondary" Text="{Binding LocalText}" ToolTip.Tip="{Binding LocalText}" />
+                            <StackPanel Grid.Column="3" Spacing="1" VerticalAlignment="Center">
+                              <TextBlock Classes="cell" Text="{Binding RemoteText}" ToolTip.Tip="{Binding RemoteText}" />
+                              <TextBlock Classes="caption mono-caption" Text="{Binding RemoteCaption}" IsVisible="{Binding HasRemoteCaption}"
+                                         TextTrimming="CharacterEllipsis" />
+                            </StackPanel>
+                            <StackPanel Grid.Column="4" Spacing="1" VerticalAlignment="Center">
+                              <TextBlock Classes="cell" Text="{Binding LocationText}" ToolTip.Tip="{Binding LocationText}" />
+                              <TextBlock Classes="caption" Text="{Binding LocationCaption}" IsVisible="{Binding HasLocationCaption}"
+                                         TextTrimming="CharacterEllipsis" ToolTip.Tip="{Binding LocationCaption}" />
+                            </StackPanel>
+                            <Border Grid.Column="5" Classes="badge" Classes.success="{Binding IsActive}" Classes.warning="{Binding IsShortLived}"
+                                    HorizontalAlignment="Left" VerticalAlignment="Center">
+                              <TextBlock Text="{Binding StateText}" />
+                            </Border>
+                            <StackPanel Grid.Column="6" Spacing="1" VerticalAlignment="Center">
+                              <TextBlock Classes="number" Text="{Binding SentText}" />
+                              <TextBlock Classes="caption mono-caption" HorizontalAlignment="Right" Text="{Binding SendRateText}" IsVisible="{Binding HasSendRate}" />
+                            </StackPanel>
+                            <StackPanel Grid.Column="7" Spacing="1" VerticalAlignment="Center">
+                              <TextBlock Classes="number" Text="{Binding ReceivedText}" />
+                              <TextBlock Classes="caption mono-caption" HorizontalAlignment="Right" Text="{Binding ReceiveRateText}" IsVisible="{Binding HasReceiveRate}" />
+                            </StackPanel>
+                            <TextBlock Grid.Column="8" Classes="number secondary" Text="{Binding SeenText}" />
+                          </Grid>
+                        </Button>
+                      </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                  </ItemsControl>
+                </Grid>
+              </ScrollViewer>
+
+              <!-- ========== Listening ========== -->
+              <ScrollViewer x:Name="ListenerScroller" HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled" IsVisible="{Binding IsListeningView}">
+                <Grid x:Name="ListenerTable" RowDefinitions="Auto,*" MinWidth="900">
+                  <Border Classes="table-header">
+                    <Grid ColumnDefinitions="1.2*,72,1*,64,1.6*,96,96" ColumnSpacing="14">
+                      <ContentControl Content="{Binding Listeners.Process}" ContentTemplate="{StaticResource SortHeaderTemplate}" />
+                      <ContentControl Grid.Column="1" Content="{Binding Listeners.Protocol}" ContentTemplate="{StaticResource SortHeaderTemplate}" />
+                      <ContentControl Grid.Column="2" Content="{Binding Listeners.Local}" ContentTemplate="{StaticResource SortHeaderTemplate}" />
+                      <ContentControl Grid.Column="3" Content="{Binding Listeners.Port}" ContentTemplate="{StaticResource SortHeaderTemplate}" HorizontalAlignment="Right" />
+                      <ContentControl Grid.Column="4" Content="{Binding Listeners.Exposure}" ContentTemplate="{StaticResource SortHeaderTemplate}" />
+                      <ContentControl Grid.Column="5" Content="{Binding Listeners.Connections}" ContentTemplate="{StaticResource SortHeaderTemplate}" HorizontalAlignment="Right" />
+                      <ContentControl Grid.Column="6" Content="{Binding Listeners.Seen}" ContentTemplate="{StaticResource SortHeaderTemplate}" HorizontalAlignment="Right" />
+                    </Grid>
+                  </Border>
+
+                  <ItemsControl Grid.Row="1" ItemsSource="{Binding ListenerRows}" AutomationProperties.Name="Listening ports">
+                    <ItemsControl.Template>
+                      <ControlTemplate>
+                        <ScrollViewer HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
+                          <ItemsPresenter Name="PART_ItemsPresenter" ItemsPanel="{TemplateBinding ItemsPanel}" />
+                        </ScrollViewer>
+                      </ControlTemplate>
+                    </ItemsControl.Template>
+                    <ItemsControl.ItemsPanel>
+                      <ItemsPanelTemplate>
+                        <VirtualizingStackPanel />
+                      </ItemsPanelTemplate>
+                    </ItemsControl.ItemsPanel>
+                    <ItemsControl.ItemTemplate>
+                      <DataTemplate x:DataType="net:ListenerRow">
+                        <Button Theme="{StaticResource SelectableRow}" Padding="24,5" Classes.selected="{Binding IsSelected}"
+                                Command="{Binding SelectCommand}" AutomationProperties.Name="{Binding AccessibleName}">
+                          <Grid ColumnDefinitions="1.2*,72,1*,64,1.6*,96,96" ColumnSpacing="14">
+                            <StackPanel Spacing="1" VerticalAlignment="Center">
+                              <TextBlock Classes="cell name" Text="{Binding ProcessName}" ToolTip.Tip="{Binding ProcessName}" />
+                              <TextBlock Classes="caption" Text="{Binding ProcessCaption}" TextTrimming="CharacterEllipsis"
+                                         ToolTip.Tip="{Binding ProcessCaption}" />
+                            </StackPanel>
+                            <TextBlock Grid.Column="1" Classes="cell" Text="{Binding ProtocolText}" />
+                            <TextBlock Grid.Column="2" Classes="mono-cell" Text="{Binding AddressText}" ToolTip.Tip="{Binding AddressText}" />
+                            <TextBlock Grid.Column="3" Classes="number" Text="{Binding PortText}" />
+                            <Border Grid.Column="4" Classes="badge" Classes.warning="{Binding IsExposed}"
+                                    HorizontalAlignment="Left" VerticalAlignment="Center">
+                              <TextBlock Text="{Binding ExposureText}" TextTrimming="CharacterEllipsis" />
+                            </Border>
+                            <TextBlock Grid.Column="5" Classes="number" Text="{Binding ConnectionsText}" />
+                            <TextBlock Grid.Column="6" Classes="number secondary" Text="{Binding SinceText}" />
+                          </Grid>
+                        </Button>
+                      </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                  </ItemsControl>
+                </Grid>
+              </ScrollViewer>
+
+              <!-- ========== Processes ========== -->
+              <ScrollViewer x:Name="ProcessScroller" HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled" IsVisible="{Binding IsProcessesView}">
+                <Grid x:Name="ProcessTable" RowDefinitions="Auto,*" MinWidth="1000">
+                  <Border Classes="table-header">
+                    <Grid ColumnDefinitions="*,84,64,80,104,96,96,96,96" ColumnSpacing="14">
+                      <ContentControl Content="{Binding ProcessColumns.Process}" ContentTemplate="{StaticResource SortHeaderTemplate}" />
+                      <TextBlock Grid.Column="1" Text="Status" />
+                      <ContentControl Grid.Column="2" Content="{Binding ProcessColumns.Connections}" ContentTemplate="{StaticResource SortHeaderTemplate}" HorizontalAlignment="Right" />
+                      <ContentControl Grid.Column="3" Content="{Binding ProcessColumns.Port}" ContentTemplate="{StaticResource SortHeaderTemplate}" HorizontalAlignment="Right" />
+                      <ContentControl Grid.Column="4" Content="{Binding ProcessColumns.Hosts}" ContentTemplate="{StaticResource SortHeaderTemplate}" HorizontalAlignment="Right" />
+                      <ContentControl Grid.Column="5" Content="{Binding ProcessColumns.ReceiveRate}" ContentTemplate="{StaticResource SortHeaderTemplate}" HorizontalAlignment="Right" />
+                      <ContentControl Grid.Column="6" Content="{Binding ProcessColumns.SendRate}" ContentTemplate="{StaticResource SortHeaderTemplate}" HorizontalAlignment="Right" />
+                      <ContentControl Grid.Column="7" Content="{Binding ProcessColumns.Received}" ContentTemplate="{StaticResource SortHeaderTemplate}" HorizontalAlignment="Right" />
+                      <ContentControl Grid.Column="8" Content="{Binding ProcessColumns.Sent}" ContentTemplate="{StaticResource SortHeaderTemplate}" HorizontalAlignment="Right" />
+                    </Grid>
+                  </Border>
+
+                  <ItemsControl Grid.Row="1" ItemsSource="{Binding ProcessRows}" AutomationProperties.Name="Processes">
+                    <ItemsControl.Template>
+                      <ControlTemplate>
+                        <ScrollViewer HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
+                          <ItemsPresenter Name="PART_ItemsPresenter" ItemsPanel="{TemplateBinding ItemsPanel}" />
+                        </ScrollViewer>
+                      </ControlTemplate>
+                    </ItemsControl.Template>
+                    <ItemsControl.ItemsPanel>
+                      <ItemsPanelTemplate>
+                        <VirtualizingStackPanel />
+                      </ItemsPanelTemplate>
+                    </ItemsControl.ItemsPanel>
+                    <ItemsControl.ItemTemplate>
+                      <DataTemplate x:DataType="net:ProcessTrafficRow">
+                        <Button Theme="{StaticResource SelectableRow}" Padding="24,5" Classes.selected="{Binding IsSelected}"
+                                Command="{Binding SelectCommand}" AutomationProperties.Name="{Binding AccessibleName}">
+                          <Grid ColumnDefinitions="*,84,64,80,104,96,96,96,96" ColumnSpacing="14">
+                            <Grid ColumnDefinitions="Auto,*" ColumnSpacing="6" VerticalAlignment="Center">
+                              <ctl:Icon Width="14" Height="14" VerticalAlignment="Top" Margin="0,2,0,0" Foreground="{StaticResource SlAccent}"
+                                        Data="{StaticResource IconEye}" IsVisible="{Binding IsWatched}" ToolTip.Tip="Watched" />
+                              <StackPanel Grid.Column="1" Spacing="1">
+                                <TextBlock Classes="cell name" Text="{Binding ProcessName}" ToolTip.Tip="{Binding ProcessName}" />
+                                <TextBlock Classes="caption" Text="{Binding ProcessCaption}" TextTrimming="CharacterEllipsis"
+                                           ToolTip.Tip="{Binding ProcessCaption}" />
+                              </StackPanel>
+                            </Grid>
+                            <Border Grid.Column="1" Classes="badge" Classes.success="{Binding IsRunning}"
+                                    HorizontalAlignment="Left" VerticalAlignment="Center">
+                              <TextBlock Text="{Binding StatusText}" />
+                            </Border>
+                            <TextBlock Grid.Column="2" Classes="number" Text="{Binding ConnectionsText}" />
+                            <TextBlock Grid.Column="3" Classes="number" Text="{Binding ListeningText}" />
+                            <TextBlock Grid.Column="4" Classes="number" Text="{Binding HostsText}" />
+                            <TextBlock Grid.Column="5" Classes="number" Text="{Binding ReceiveRateText}" />
+                            <TextBlock Grid.Column="6" Classes="number" Text="{Binding SendRateText}" />
+                            <TextBlock Grid.Column="7" Classes="number" Text="{Binding ReceivedText}" />
+                            <TextBlock Grid.Column="8" Classes="number" Text="{Binding SentText}" />
+                          </Grid>
+                        </Button>
+                      </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                  </ItemsControl>
+                </Grid>
+              </ScrollViewer>
+
+              <TextBlock Classes="caption" Margin="24,56,24,24" HorizontalAlignment="Center" VerticalAlignment="Top"
+                         Text="{Binding EmptyText}" IsVisible="{Binding IsEmpty}" TextWrapping="Wrap" />
+            </Panel>
+          </DockPanel>
+        </Border>
+
+        <ContentControl Grid.Column="1" x:Name="DetailsPane" Width="380" Margin="16,0,0,0"
+                        Content="{Binding Details}" ContentTemplate="{StaticResource DetailsTemplate}"
+                        IsVisible="{Binding HasDetails}" />
+      </Grid>
+    </Grid>
+
+    <!-- ========== Confirmation (components.md → Dialogs) ========== -->
+    <Border Background="{StaticResource SlScrim}" IsVisible="{Binding HasConfirmation}">
+      <Border Classes="dialog" Width="460" HorizontalAlignment="Center" VerticalAlignment="Center">
+        <StackPanel Spacing="16">
+          <ctl:CapsText Classes="dialog-title" Value="{Binding Confirmation.Title}" TextWrapping="Wrap" />
+          <TextBlock Text="{Binding Confirmation.Message}" TextWrapping="Wrap" />
+          <Border Classes="callout danger" IsVisible="{Binding Confirmation.HasWarning}">
+            <Grid ColumnDefinitions="Auto,*" ColumnSpacing="8">
+              <ctl:Icon Classes="status" Width="16" Height="16" VerticalAlignment="Top" Data="{StaticResource IconWarning}" />
+              <TextBlock Grid.Column="1" Text="{Binding Confirmation.Warning}" TextWrapping="Wrap" FontSize="{StaticResource SlTextSmall}" />
+            </Grid>
+          </Border>
+          <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Right">
+            <Button x:Name="ConfirmCancel" Theme="{StaticResource SoftButton}" Command="{Binding Confirmation.CancelCommand}"
+                    Content="Cancel" IsCancel="True" />
+            <Button Theme="{StaticResource DangerButton}" Command="{Binding Confirmation.ConfirmCommand}">
+              <StackPanel Orientation="Horizontal" Spacing="6">
+                <ctl:Icon Width="14" Height="14" Data="{StaticResource IconEnd}" />
+                <TextBlock Text="{Binding Confirmation.ConfirmText}" VerticalAlignment="Center" />
+              </StackPanel>
+            </Button>
+          </StackPanel>
+        </StackPanel>
+      </Border>
+    </Border>
+
+    <!-- ========== Settings: background recording, names, locations ========== -->
+    <Border Background="{StaticResource SlScrim}" IsVisible="{Binding HasGeoSetup}">
+      <Border Classes="dialog" Width="600" Padding="0" HorizontalAlignment="Center" VerticalAlignment="Center" Margin="24">
+        <DockPanel>
+          <Grid DockPanel.Dock="Top" ColumnDefinitions="*,Auto" Margin="24,20,16,8">
+            <ctl:CapsText Classes="dialog-title" Value="Network settings" />
+            <Button Grid.Column="1" x:Name="SettingsClose" Theme="{StaticResource IconButton}" Command="{Binding GeoSetup.CloseCommand}"
+                    AutomationProperties.Name="Close settings" ToolTip.Tip="Close (Esc)">
+              <ctl:Icon Width="14" Height="14" Data="{StaticResource IconClose}" />
+            </Button>
+          </Grid>
+
+          <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" HorizontalAlignment="Right" Margin="24,8,24,20">
+            <Button Theme="{StaticResource SoftButton}" Command="{Binding GeoSetup.CloseCommand}" Content="Done" />
+          </StackPanel>
+
+          <ScrollViewer HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
+            <StackPanel Spacing="22" Margin="24,8,24,8">
+              <!-- Recording -->
+              <StackPanel Spacing="8">
+                <ctl:CapsText Classes="label" Value="Recording while this page is closed" />
+                <StackPanel Orientation="Horizontal" Spacing="4" AutomationProperties.Name="Recording while this page is closed">
+                  <RadioButton Theme="{StaticResource SegmentButton}" GroupName="Background" Content="Off" IsChecked="{Binding IsBackgroundOff}" />
+                  <RadioButton Theme="{StaticResource SegmentButton}" GroupName="Background" Content="Watched processes" IsChecked="{Binding IsBackgroundWatched}" />
+                  <RadioButton Theme="{StaticResource SegmentButton}" GroupName="Background" Content="Everything" IsChecked="{Binding IsBackgroundAll}" />
+                </StackPanel>
+                <TextBlock Classes="secondary" FontSize="{StaticResource SlTextSmall}" Text="{Binding BackgroundDescription}" TextWrapping="Wrap" />
+              </StackPanel>
+
+              <!-- Host names -->
+              <StackPanel Spacing="8">
+                <ctl:CapsText Classes="label" Value="Host names" />
+                <StackPanel Orientation="Horizontal" Spacing="4" AutomationProperties.Name="Reverse lookups">
+                  <RadioButton Theme="{StaticResource SegmentButton}" GroupName="Reverse" Content="Look up the rest" IsChecked="{Binding ReverseLookups}" />
+                  <RadioButton Theme="{StaticResource SegmentButton}" GroupName="Reverse" Content="Only names apps looked up" IsChecked="{Binding NoReverseLookups}" />
+                </StackPanel>
+                <TextBlock Classes="secondary" FontSize="{StaticResource SlTextSmall}" TextWrapping="Wrap"
+                           Text="The names apps looked up come from Windows' DNS cache and, as administrator, from tracing lookups as they happen; that sends nothing. Looking up the rest asks DNS servers what each address is called, which sends queries of its own." />
+              </StackPanel>
+
+              <!-- Locations -->
+              <StackPanel Spacing="10">
+                <ctl:CapsText Classes="label" Value="Locations and network owners" />
+                <TextBlock Classes="secondary" FontSize="{StaticResource SlTextSmall}" TextWrapping="Wrap"
+                           Text="Where an address is and which network owns it come from a database on this computer, so looking one up sends nothing. None is included: download a free one, or add a file you have." />
+
+                <Grid ColumnDefinitions="128,*,Auto" RowDefinitions="Auto,Auto" ColumnSpacing="8" RowSpacing="6">
+                  <TextBlock Classes="caption" Text="Locations" />
+                  <TextBlock Grid.Column="1" Classes="mono" FontSize="{StaticResource SlTextSmall}" Text="{Binding GeoSetup.LocationStatus}" TextWrapping="Wrap" />
+                  <Button Grid.Column="2" Theme="{StaticResource LinkButton}" Command="{Binding GeoSetup.RemoveLocationCommand}"
+                          IsVisible="{Binding GeoSetup.HasLocation}" IsEnabled="{Binding GeoSetup.IsIdle}">
+                    <TextBlock Text="Remove" FontSize="{StaticResource SlTextSmall}" />
+                  </Button>
+                  <TextBlock Grid.Row="1" Classes="caption" Text="Network owners" />
+                  <TextBlock Grid.Row="1" Grid.Column="1" Classes="mono" FontSize="{StaticResource SlTextSmall}" Text="{Binding GeoSetup.NetworkStatus}" TextWrapping="Wrap" />
+                  <Button Grid.Row="1" Grid.Column="2" Theme="{StaticResource LinkButton}" Command="{Binding GeoSetup.RemoveNetworkCommand}"
+                          IsVisible="{Binding GeoSetup.HasNetwork}" IsEnabled="{Binding GeoSetup.IsIdle}">
+                    <TextBlock Text="Remove" FontSize="{StaticResource SlTextSmall}" />
+                  </Button>
+                </Grid>
+
+                <ItemsControl ItemsSource="{Binding GeoSetup.Sources}">
+                  <ItemsControl.ItemTemplate>
+                    <DataTemplate x:DataType="net:GeoSourceItem">
+                      <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12" Margin="0,4">
+                        <StackPanel Spacing="1" VerticalAlignment="Center">
+                          <TextBlock Text="{Binding Title}" />
+                          <TextBlock Classes="caption" Text="{Binding Description}" TextWrapping="Wrap" />
+                        </StackPanel>
+                        <Button Grid.Column="1" Theme="{StaticResource SoftButton}" Command="{Binding DownloadCommand}" VerticalAlignment="Center"
+                                AutomationProperties.Name="{Binding Title}" ToolTip.Tip="Download from db-ip.com and install">
+                          <StackPanel Orientation="Horizontal" Spacing="6">
+                            <ctl:Icon Width="14" Height="14" Data="{StaticResource IconDownload}" />
+                            <TextBlock Text="Download" VerticalAlignment="Center" />
+                          </StackPanel>
+                        </Button>
+                      </Grid>
+                    </DataTemplate>
+                  </ItemsControl.ItemTemplate>
+                </ItemsControl>
+
+                <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12">
+                  <StackPanel Spacing="1" VerticalAlignment="Center">
+                    <TextBlock Text="A database file you have" />
+                    <TextBlock Classes="caption" TextWrapping="Wrap"
+                               Text="Any MaxMind DB (.mmdb): GeoLite2 City, Country or ASN (free with a MaxMind account), IPinfo Lite, or DB-IP." />
+                  </StackPanel>
+                  <Button Grid.Column="1" Theme="{StaticResource SoftButton}" Command="{Binding GeoSetup.ImportCommand}" VerticalAlignment="Center"
+                          IsEnabled="{Binding GeoSetup.IsIdle}">
+                    <StackPanel Orientation="Horizontal" Spacing="6">
+                      <ctl:Icon Width="14" Height="14" Data="{StaticResource IconFolderOpen}" />
+                      <TextBlock Text="Add file…" VerticalAlignment="Center" />
+                    </StackPanel>
+                  </Button>
+                </Grid>
+
+                <StackPanel Spacing="6" IsVisible="{Binding GeoSetup.IsBusy}">
+                  <Grid ColumnDefinitions="*,Auto">
+                    <TextBlock Classes="caption" Text="{Binding GeoSetup.ProgressText}" VerticalAlignment="Center" />
+                    <Button Grid.Column="1" Theme="{StaticResource LinkButton}" Command="{Binding GeoSetup.CancelCommand}">
+                      <TextBlock Text="Cancel" FontSize="{StaticResource SlTextSmall}" />
+                    </Button>
+                  </Grid>
+                  <ProgressBar Minimum="0" Maximum="100" Value="{Binding GeoSetup.Progress}" Height="4" MinHeight="4"
+                               Foreground="{StaticResource SlAccent}" Background="{StaticResource SlRaised}" />
+                </StackPanel>
+
+                <Border Classes="callout" Classes.danger="{Binding GeoSetup.MessageIsError}" IsVisible="{Binding GeoSetup.HasMessage}">
+                  <TextBlock Text="{Binding GeoSetup.Message}" TextWrapping="Wrap" FontSize="{StaticResource SlTextSmall}" />
+                </Border>
+
+                <TextBlock Classes="caption" Text="{Binding GeoSetup.Attribution}" TextWrapping="Wrap" />
+                <SelectableTextBlock FontFamily="{StaticResource SlFontMono}" FontSize="{StaticResource SlTextSmall}"
+                                     Foreground="{StaticResource SlTextSecondary}" Text="{Binding GeoSetup.Folder}" TextWrapping="Wrap"
+                                     SelectionBrush="{StaticResource SlAccentTint30}" />
+              </StackPanel>
+            </StackPanel>
+          </ScrollViewer>
+        </DockPanel>
+      </Border>
+    </Border>
+  </Panel>
+</UserControl>
