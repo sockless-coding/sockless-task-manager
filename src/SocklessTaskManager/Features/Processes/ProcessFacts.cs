@@ -1,5 +1,6 @@
 using System.Buffers.Binary;
 using System.Diagnostics;
+using Sockless.TaskManager.Core.Interop;
 
 namespace Sockless.TaskManager.Features.Processes;
 
@@ -21,9 +22,6 @@ internal static unsafe class ProcessFacts
 {
     private const int ProcessBreakOnTermination = 29;
     private const int ProcessCommandLineInformation = 60;
-    private const uint TokenQuery = 0x0008;
-    private const int TokenUser = 1;
-    private const int TokenElevation = 20;
 
     /// <summary>
     /// Ending these stops Windows, or leaves the session unusable. Most of them are protected
@@ -68,43 +66,6 @@ internal static unsafe class ProcessFacts
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException)
         {
             return (null, null);
-        }
-    }
-
-    /// <summary>
-    /// The account the process runs as, without the domain ("jimmy", "SYSTEM", "LOCAL SERVICE"),
-    /// as the User column shows it. Names are cached by SID: a few accounts own every process.
-    /// Fails for other users' processes unless elevated.
-    /// </summary>
-    public static string? Owner(nint process, Dictionary<string, string?> accounts)
-    {
-        if (!ProcessNative.OpenProcessToken(process, TokenQuery, out var token))
-            return null;
-
-        try
-        {
-            var buffer = stackalloc byte[256];
-            if (!ProcessNative.GetTokenInformation(token, TokenUser, buffer, 256, out _))
-                return null;
-
-            var sid = *(byte**)buffer;
-            var sidLength = 8 + 4 * sid[1];
-            var key = Convert.ToHexString(new ReadOnlySpan<byte>(sid, sidLength));
-            if (accounts.TryGetValue(key, out var cached))
-                return cached;
-
-            var name = stackalloc char[256];
-            var domain = stackalloc char[256];
-            uint nameLength = 256, domainLength = 256;
-            var account = ProcessNative.LookupAccountSid(null, sid, name, ref nameLength, domain, ref domainLength, out _)
-                ? new string(name, 0, (int)nameLength)
-                : null;
-            accounts[key] = account;
-            return account;
-        }
-        finally
-        {
-            ProcessNative.CloseHandle(token);
         }
     }
 
@@ -157,35 +118,8 @@ internal static unsafe class ProcessFacts
 
     private static (string? User, bool? Elevated) Token(nint process)
     {
-        if (!ProcessNative.OpenProcessToken(process, TokenQuery, out var token))
-            return (null, null);
-
-        try
-        {
-            bool? elevated = null;
-            uint isElevated = 0;
-            if (ProcessNative.GetTokenInformation(token, TokenElevation, &isElevated, sizeof(uint), out _))
-                elevated = isElevated != 0;
-
-            var buffer = stackalloc byte[256];
-            if (!ProcessNative.GetTokenInformation(token, TokenUser, buffer, 256, out _))
-                return (null, elevated);
-
-            // TOKEN_USER starts with a pointer to the SID, which lies further on in the same buffer.
-            var sid = *(void**)buffer;
-            var name = stackalloc char[256];
-            var domain = stackalloc char[256];
-            uint nameLength = 256, domainLength = 256;
-            if (!ProcessNative.LookupAccountSid(null, sid, name, ref nameLength, domain, ref domainLength, out _))
-                return (null, elevated);
-
-            var user = new string(name, 0, (int)nameLength);
-            return (domainLength > 0 ? $"{new string(domain, 0, (int)domainLength)}\\{user}" : user, elevated);
-        }
-        finally
-        {
-            ProcessNative.CloseHandle(token);
-        }
+        var (owner, elevated) = Accounts.OwnerAndElevation(process);
+        return (owner?.FullName, elevated);
     }
 
     private static string? NullIfBlank(string? value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim();

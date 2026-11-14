@@ -70,18 +70,6 @@ internal static unsafe partial class ProcessNative
 
     [LibraryImport("ntdll.dll")]
     public static partial uint NtQueryInformationProcess(nint process, int infoClass, void* buffer, uint length, out uint returned);
-
-    [LibraryImport("advapi32.dll")]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    public static partial bool OpenProcessToken(nint process, uint access, out nint token);
-
-    [LibraryImport("advapi32.dll")]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    public static partial bool GetTokenInformation(nint token, int infoClass, void* buffer, uint length, out uint returned);
-
-    [LibraryImport("advapi32.dll", EntryPoint = "LookupAccountSidW")]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    public static partial bool LookupAccountSid(char* system, void* sid, char* name, ref uint nameLength, char* domain, ref uint domainLength, out int use);
 }
 
 /// <summary>Why an action on a process didn't happen.</summary>

@@ -1,0 +1,283 @@
+<!--
+  Users page: title and counts, a toolbar (signed in or all accounts), a callout for what's
+  missing without administrator rights, then the table with the selected row's details beside it.
+  Narrow windows show the details over the table instead (code-behind). Signing out asks first,
+  in a dialog over the page.
+-->
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:ctl="using:Sockless.TaskManager.Controls"
+             xmlns:users="using:Sockless.TaskManager.Features.Users"
+             x:Class="Sockless.TaskManager.Features.Users.UsersView"
+             x:DataType="users:UserList">
+
+  <UserControl.Resources>
+    <!-- The details pane (users:UserDetails). -->
+    <DataTemplate x:Key="DetailsTemplate" x:DataType="users:UserDetails">
+      <Border Classes="card" Padding="0" ClipToBounds="True">
+        <DockPanel>
+          <!-- Header: who it is, its state, and what can be done to the session. -->
+          <Border DockPanel.Dock="Top" Padding="20,16" BorderBrush="{StaticResource SlBorder}" BorderThickness="0,0,0,1">
+            <StackPanel Spacing="14">
+              <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="8">
+                <StackPanel Spacing="2">
+                  <TextBlock Classes="section-title" Text="{Binding Name}" TextTrimming="CharacterEllipsis"
+                             ToolTip.Tip="{Binding Name}" />
+                  <TextBlock Classes="caption" Text="{Binding Subtitle}" IsVisible="{Binding HasSubtitle}"
+                             TextTrimming="CharacterEllipsis" ToolTip.Tip="{Binding Subtitle}" />
+                </StackPanel>
+                <Border Grid.Column="1" Classes="badge" Classes.success="{Binding IsSuccess}" VerticalAlignment="Top">
+                  <TextBlock Text="{Binding StatusText}" />
+                </Border>
+                <Button Grid.Column="2" Theme="{StaticResource IconButton}" VerticalAlignment="Top"
+                        Command="{Binding CloseCommand}" AutomationProperties.Name="Close details" ToolTip.Tip="Close (Esc)">
+                  <ctl:Icon Width="14" Height="14" Data="{StaticResource IconClose}" />
+                </Button>
+              </Grid>
+
+              <StackPanel Spacing="10" IsVisible="{Binding IsSession}">
+                <WrapPanel ItemSpacing="8" LineSpacing="8">
+                  <Button Theme="{StaticResource SoftButton}" Command="{Binding DisconnectCommand}"
+                          ToolTip.Tip="End the connection. The session and its apps keep running until they sign in again.">
+                    <Button.IsEnabled>
+                      <MultiBinding Converter="{x:Static BoolConverters.And}">
+                        <Binding Path="CanDisconnect" />
+                        <Binding Path="CanManage" />
+                      </MultiBinding>
+                    </Button.IsEnabled>
+                    <StackPanel Orientation="Horizontal" Spacing="6">
+                      <ctl:Icon Width="14" Height="14" Data="{StaticResource IconDisconnect}" />
+                      <TextBlock Text="Disconnect" VerticalAlignment="Center" />
+                    </StackPanel>
+                  </Button>
+                  <Button Theme="{StaticResource DangerButton}" Command="{Binding SignOutCommand}" IsEnabled="{Binding CanManage}"
+                          ToolTip.Tip="Sign the session out, closing every app in it">
+                    <StackPanel Orientation="Horizontal" Spacing="6">
+                      <ctl:Icon Width="14" Height="14" Data="{StaticResource IconSignOut}" />
+                      <TextBlock Text="Sign out" VerticalAlignment="Center" />
+                    </StackPanel>
+                  </Button>
+                </WrapPanel>
+
+                <StackPanel Spacing="4" IsVisible="{Binding NeedsElevation}">
+                  <TextBlock Classes="caption" TextWrapping="Wrap"
+                             Text="Disconnecting or signing out another user needs administrator rights." />
+                  <Button Theme="{StaticResource LinkButton}" Command="{Binding RestartElevatedCommand}" HorizontalAlignment="Left">
+                    <StackPanel Orientation="Horizontal" Spacing="4">
+                      <ctl:Icon Width="14" Height="14" Data="{StaticResource IconShield}" />
+                      <TextBlock Text="Restart as administrator" FontSize="{StaticResource SlTextSmall}" VerticalAlignment="Center" />
+                    </StackPanel>
+                  </Button>
+                </StackPanel>
+
+                <Border Classes="callout" Classes.danger="{Binding MessageIsError}" IsVisible="{Binding HasMessage}">
+                  <Grid ColumnDefinitions="Auto,*" ColumnSpacing="8">
+                    <ctl:Icon Classes="status" Width="16" Height="16" VerticalAlignment="Top"
+                              Data="{StaticResource IconWarning}" IsVisible="{Binding MessageIsError}" />
+                    <TextBlock Grid.Column="1" Text="{Binding Message}" TextWrapping="Wrap" FontSize="{StaticResource SlTextSmall}" />
+                  </Grid>
+                </Border>
+              </StackPanel>
+            </StackPanel>
+          </Border>
+
+          <!-- Facts, then the processes, which take the rest of the height and scroll. -->
+          <Grid RowDefinitions="Auto,Auto,Auto,*" Margin="20,14,20,0">
+            <ItemsControl ItemsSource="{Binding Facts}" Margin="0,0,0,14">
+              <ItemsControl.ItemTemplate>
+                <DataTemplate x:DataType="users:UserFact">
+                  <Grid ColumnDefinitions="104,*" ColumnSpacing="8" Margin="0,3">
+                    <TextBlock Classes="caption" Text="{Binding Label}" />
+                    <SelectableTextBlock Grid.Column="1" Text="{Binding Value}" TextWrapping="Wrap"
+                                         FontFamily="{StaticResource SlFontMono}" FontSize="{StaticResource SlTextSmall}"
+                                         SelectionBrush="{StaticResource SlAccentTint30}" />
+                  </Grid>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+
+            <ctl:CapsText Grid.Row="1" Classes="label" Value="{Binding ProcessesTitle}" Margin="0,0,0,6" />
+
+            <Border Grid.Row="2" Classes="callout info" Margin="0,0,0,8" IsVisible="{Binding HasHidden}">
+              <StackPanel Spacing="6">
+                <TextBlock Text="{Binding HiddenText}" TextWrapping="Wrap" FontSize="{StaticResource SlTextSmall}" />
+                <Button Theme="{StaticResource LinkButton}" Command="{Binding RestartElevatedCommand}"
+                        IsVisible="{Binding OfferElevation}" HorizontalAlignment="Left">
+                  <StackPanel Orientation="Horizontal" Spacing="4">
+                    <ctl:Icon Width="14" Height="14" Data="{StaticResource IconShield}" />
+                    <TextBlock Text="Restart as administrator" FontSize="{StaticResource SlTextSmall}" VerticalAlignment="Center" />
+                  </StackPanel>
+                </Button>
+              </StackPanel>
+            </Border>
+
+            <Grid Grid.Row="3" RowDefinitions="Auto,*">
+              <Grid ColumnDefinitions="*,52,44,64" ColumnSpacing="8" Margin="0,0,12,4">
+                <TextBlock Classes="caption" Text="Name" />
+                <TextBlock Grid.Column="1" Classes="caption" Text="PID" HorizontalAlignment="Right" />
+                <TextBlock Grid.Column="2" Classes="caption" Text="CPU" HorizontalAlignment="Right" />
+                <TextBlock Grid.Column="3" Classes="caption" Text="Memory" HorizontalAlignment="Right" />
+              </Grid>
+              <ItemsControl Grid.Row="1" ItemsSource="{Binding Processes}" AutomationProperties.Name="Processes">
+                <ItemsControl.Template>
+                  <ControlTemplate>
+                    <ScrollViewer HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
+                      <ItemsPresenter Name="PART_ItemsPresenter" ItemsPanel="{TemplateBinding ItemsPanel}" />
+                    </ScrollViewer>
+                  </ControlTemplate>
+                </ItemsControl.Template>
+                <ItemsControl.ItemsPanel>
+                  <ItemsPanelTemplate>
+                    <VirtualizingStackPanel />
+                  </ItemsPanelTemplate>
+                </ItemsControl.ItemsPanel>
+                <ItemsControl.ItemTemplate>
+                  <DataTemplate x:DataType="users:UserProcessLine">
+                    <Grid ColumnDefinitions="*,52,44,64" ColumnSpacing="8" Margin="0,3,12,3">
+                      <TextBlock Classes="cell" Text="{Binding Name}" ToolTip.Tip="{Binding Name}" />
+                      <TextBlock Grid.Column="1" Classes="number secondary" Text="{Binding IdText}" />
+                      <TextBlock Grid.Column="2" Classes="number" Text="{Binding CpuText}" />
+                      <TextBlock Grid.Column="3" Classes="number" Text="{Binding MemoryText}" />
+                    </Grid>
+                  </DataTemplate>
+                </ItemsControl.ItemTemplate>
+              </ItemsControl>
+            </Grid>
+          </Grid>
+        </DockPanel>
+      </Border>
+    </DataTemplate>
+  </UserControl.Resources>
+
+  <UserControl.Styles>
+    <Style Selector="TextBlock.cell">
+      <Setter Property="FontSize" Value="{StaticResource SlTextSmall}" />
+      <Setter Property="VerticalAlignment" Value="Center" />
+      <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+    </Style>
+    <Style Selector="TextBlock.number">
+      <Setter Property="FontFamily" Value="{StaticResource SlFontMono}" />
+      <Setter Property="FontSize" Value="{StaticResource SlTextSmall}" />
+      <Setter Property="HorizontalAlignment" Value="Right" />
+      <Setter Property="VerticalAlignment" Value="Center" />
+    </Style>
+    <Style Selector="Button.selected TextBlock.name">
+      <Setter Property="FontWeight" Value="SemiBold" />
+    </Style>
+  </UserControl.Styles>
+
+  <Panel>
+    <Grid RowDefinitions="Auto,Auto,Auto,*" Margin="{StaticResource SlContentPadding}" IsEnabled="{Binding !HasConfirmation}">
+      <StackPanel Spacing="4" Margin="0,0,0,16">
+        <TextBlock Classes="page-title" Text="Users" />
+        <TextBlock Classes="secondary" Text="{Binding Summary}" />
+      </StackPanel>
+
+      <!-- ========== Toolbar ========== -->
+      <StackPanel Grid.Row="1" Orientation="Horizontal" Spacing="4" Margin="0,0,0,12" AutomationProperties.Name="Show">
+        <RadioButton Theme="{StaticResource SegmentButton}" GroupName="UsersView" Content="Signed in"
+                     IsChecked="{Binding IsSignedInView}" ToolTip.Tip="The people signed in to this computer, one row per session" />
+        <RadioButton Theme="{StaticResource SegmentButton}" GroupName="UsersView" Content="All accounts"
+                     IsChecked="{Binding IsAllAccountsView}" ToolTip.Tip="Every account that runs a process, services and Windows itself included" />
+      </StackPanel>
+
+      <!-- Without elevation Windows names only this user's processes' owner: say what's missing, and how to fix it. -->
+      <Border Grid.Row="2" Classes="callout info" Margin="0,0,0,12" IsVisible="{Binding HasHint}">
+        <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="10">
+          <ctl:Icon Classes="status" Width="16" Height="16" VerticalAlignment="Top" Data="{StaticResource IconShield}" />
+          <TextBlock Grid.Column="1" Text="{Binding Hint}" TextWrapping="Wrap" FontSize="{StaticResource SlTextSmall}" />
+          <Button Grid.Column="2" Theme="{StaticResource LinkButton}" VerticalAlignment="Top" Command="{Binding RestartElevatedCommand}">
+            <TextBlock Text="Restart as administrator" FontSize="{StaticResource SlTextSmall}" />
+          </Button>
+        </Grid>
+      </Border>
+
+      <Grid Grid.Row="3" x:Name="Body" ColumnDefinitions="*,Auto">
+        <!-- ========== Table ========== -->
+        <Border Classes="card" Padding="0" ClipToBounds="True">
+          <ScrollViewer HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled">
+            <Grid RowDefinitions="Auto,*" MinWidth="780">
+              <Border Classes="table-header">
+                <Grid ColumnDefinitions="*,112,104,128,76,56,84" ColumnSpacing="16">
+                  <TextBlock Text="{Binding NameHeader}" />
+                  <TextBlock Grid.Column="1" Text="{Binding StatusHeader}" />
+                  <TextBlock Grid.Column="2" Text="{Binding SessionHeader}" />
+                  <TextBlock Grid.Column="3" Text="{Binding SinceHeader}" />
+                  <TextBlock Grid.Column="4" Text="Processes" HorizontalAlignment="Right" />
+                  <TextBlock Grid.Column="5" Text="CPU" HorizontalAlignment="Right" />
+                  <TextBlock Grid.Column="6" Text="Memory" HorizontalAlignment="Right" />
+                </Grid>
+              </Border>
+
+              <ItemsControl Grid.Row="1" x:Name="Table" ItemsSource="{Binding Rows}" AutomationProperties.Name="{Binding NameHeader}">
+                <ItemsControl.Template>
+                  <ControlTemplate>
+                    <ScrollViewer HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
+                      <ItemsPresenter Name="PART_ItemsPresenter" ItemsPanel="{TemplateBinding ItemsPanel}" />
+                    </ScrollViewer>
+                  </ControlTemplate>
+                </ItemsControl.Template>
+                <ItemsControl.ItemTemplate>
+                  <DataTemplate x:DataType="users:UserRow">
+                    <Button Theme="{StaticResource SelectableRow}" Padding="24,7" Classes.selected="{Binding IsSelected}"
+                            Command="{Binding SelectCommand}" AutomationProperties.Name="{Binding AccessibleName}">
+                      <Grid ColumnDefinitions="*,112,104,128,76,56,84" ColumnSpacing="16">
+                        <StackPanel Spacing="1" VerticalAlignment="Center">
+                          <TextBlock Classes="name" Text="{Binding Name}" TextTrimming="CharacterEllipsis" ToolTip.Tip="{Binding Name}" />
+                          <TextBlock Classes="caption" Text="{Binding Caption}" TextTrimming="CharacterEllipsis"
+                                     IsVisible="{Binding HasCaption}" />
+                        </StackPanel>
+                        <Border Grid.Column="1" Classes="badge" Classes.success="{Binding IsSuccess}"
+                                HorizontalAlignment="Left" VerticalAlignment="Center">
+                          <TextBlock Text="{Binding StatusText}" />
+                        </Border>
+                        <TextBlock Grid.Column="2" Classes="cell mono" Text="{Binding SessionText}" />
+                        <TextBlock Grid.Column="3" Classes="cell mono" Text="{Binding SinceText}" />
+                        <TextBlock Grid.Column="4" Classes="number" Text="{Binding ProcessesText}" />
+                        <TextBlock Grid.Column="5" Classes="number" Text="{Binding CpuText}" />
+                        <TextBlock Grid.Column="6" Classes="number" Text="{Binding MemoryText}" />
+                      </Grid>
+                    </Button>
+                  </DataTemplate>
+                </ItemsControl.ItemTemplate>
+              </ItemsControl>
+
+              <TextBlock Grid.Row="1" Classes="caption" Margin="24" HorizontalAlignment="Center" VerticalAlignment="Top"
+                         Text="{Binding EmptyText}" IsVisible="{Binding IsEmpty}" />
+            </Grid>
+          </ScrollViewer>
+        </Border>
+
+        <ContentControl Grid.Column="1" x:Name="DetailsPane" Width="360" Margin="16,0,0,0"
+                        Content="{Binding Details}" ContentTemplate="{StaticResource DetailsTemplate}"
+                        IsVisible="{Binding HasDetails}" />
+      </Grid>
+    </Grid>
+
+    <!-- ========== Confirmation (components.md → Dialogs) ========== -->
+    <Border Background="{StaticResource SlScrim}" IsVisible="{Binding HasConfirmation}">
+      <Border Classes="dialog" Width="460" HorizontalAlignment="Center" VerticalAlignment="Center">
+        <StackPanel Spacing="16">
+          <ctl:CapsText Classes="dialog-title" Value="{Binding Confirmation.Title}" TextWrapping="Wrap" />
+          <TextBlock Text="{Binding Confirmation.Message}" TextWrapping="Wrap" />
+          <Border Classes="callout danger" IsVisible="{Binding Confirmation.HasWarning}">
+            <Grid ColumnDefinitions="Auto,*" ColumnSpacing="8">
+              <ctl:Icon Classes="status" Width="16" Height="16" VerticalAlignment="Top" Data="{StaticResource IconWarning}" />
+              <TextBlock Grid.Column="1" Text="{Binding Confirmation.Warning}" TextWrapping="Wrap" FontSize="{StaticResource SlTextSmall}" />
+            </Grid>
+          </Border>
+          <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Right">
+            <Button x:Name="ConfirmCancel" Theme="{StaticResource SoftButton}" Command="{Binding Confirmation.CancelCommand}"
+                    Content="Cancel" IsCancel="True" />
+            <Button Theme="{StaticResource DangerButton}" Command="{Binding Confirmation.ConfirmCommand}">
+              <StackPanel Orientation="Horizontal" Spacing="6">
+                <ctl:Icon Width="14" Height="14" Data="{StaticResource IconSignOut}" />
+                <TextBlock Text="{Binding Confirmation.ConfirmText}" VerticalAlignment="Center" />
+              </StackPanel>
+            </Button>
+          </StackPanel>
+        </StackPanel>
+      </Border>
+    </Border>
+  </Panel>
+</UserControl>

@@ -84,7 +84,7 @@ internal sealed class ProcessSampler
     private const long DotnetListInterval = 3000;
 
     private readonly Dictionary<ProcessKey, Extra> _extras = [];
-    private readonly Dictionary<string, string?> _accounts = [];
+    private readonly Dictionary<string, Account> _accounts = [];
     private readonly Dictionary<string, string?> _descriptions = new(StringComparer.OrdinalIgnoreCase);
     private byte[] _buffer = NtSystem.Buffer(1024 * 1024);
     private Dictionary<ProcessKey, Counters> _previous = [];
@@ -203,7 +203,7 @@ internal sealed class ProcessSampler
         try
         {
             extra.Path = ProcessImage.Path(process);
-            extra.User = ProcessFacts.Owner(process, _accounts);
+            extra.User = Accounts.Owner(process, _accounts)?.Name;
         }
         finally
         {

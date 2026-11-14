@@ -6,6 +6,7 @@ using Sockless.TaskManager.Features.Memory;
 using Sockless.TaskManager.Features.Performance;
 using Sockless.TaskManager.Features.Processes;
 using Sockless.TaskManager.Features.Updates;
+using Sockless.TaskManager.Features.Users;
 using Sockless.TaskManager.Shell;
 
 namespace Sockless.TaskManager;
@@ -27,6 +28,7 @@ public sealed class App : Application
                 new ProcessesFeature(clock),
                 PerformanceModule.Create(clock),
                 new MemoryFeature(clock),
+                new UsersFeature(clock),
             ];
 
             var shell = new ShellViewModel(clock, features, new Updater());

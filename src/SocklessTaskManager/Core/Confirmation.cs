@@ -1,7 +1,6 @@
 using System.Windows.Input;
-using Sockless.TaskManager.Core;
 
-namespace Sockless.TaskManager.Features.Processes;
+namespace Sockless.TaskManager.Core;
 
 /// <summary>
 /// A destructive action waiting for a yes (components.md → Dialogs): the title names what will be

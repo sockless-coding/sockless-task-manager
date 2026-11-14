@@ -3,9 +3,9 @@ using System.Diagnostics;
 using Avalonia;
 using Avalonia.Controls.ApplicationLifetimes;
 
-namespace Sockless.TaskManager.Features.Processes;
+namespace Sockless.TaskManager.Core;
 
-/// <summary>Running as administrator: needed to end other users' processes and to trace every process start and exit.</summary>
+/// <summary>Running as administrator: needed to see and act on other users' processes and sessions, and to trace every process start and exit.</summary>
 internal static class Elevation
 {
     private const int ErrorCancelled = 1223;

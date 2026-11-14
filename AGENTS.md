@@ -46,13 +46,17 @@ src/SocklessTaskManager/
       PerformanceModule.cs   the list of device scanners for this feature
       Cpu/ Memory/ Disk/ Network/ Gpu/   one sub-slice per device kind
     Memory/             a top-level feature: drill-down of physical memory (BreakdownTree.cs maps paths to levels)
+    Users/              a top-level feature: signed-in sessions (WTS, Sessions.cs) with their processes' CPU and
+                        memory, disconnect and sign out; or every account that owns a process (token owners, read
+                        once per process). Without elevation, other users' and services' owners can't be read and
+                        are listed as "Not readable".
     Updates/            not a page: the top bar's update offer. Reads the latest tag from GitHub's /releases/latest
                         redirect, downloads the release zip, checks its .sha256, renames running files to .old and
                         moves the new ones in, then restarts. Local builds are version 0.0.0 and never check;
                         the asset names must match release.yml.
 ```
 
-A slice owns everything it needs: native calls, sensor, view model and view. Slices don't reference each other. Code moves into `Core/` only when a second slice needs it (PDH, `GetPerformanceInfo` and `NtQuerySystemInformation` with its process-list parser are there for that reason).
+A slice owns everything it needs: native calls, sensor, view model and view. Slices don't reference each other. Code moves into `Core/` only when a second slice needs it (PDH, `GetPerformanceInfo` and `NtQuerySystemInformation` with its process-list parser are there for that reason, as are `Accounts` (process token owners), `Elevation` and `Confirmation`, shared by Processes and Users).
 
 ### Sampling model
 
