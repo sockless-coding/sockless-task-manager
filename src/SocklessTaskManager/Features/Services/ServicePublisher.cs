@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using Microsoft.Win32;
+using Sockless.TaskManager.Core;
 
 namespace Sockless.TaskManager.Features.Services;
 
@@ -25,7 +26,6 @@ internal sealed record Publisher(string Name, string Program, string? Product, b
 internal sealed class ServicePublisher
 {
     private static readonly string WindowsFolder = Path.TrimEndingDirectorySeparator(Environment.GetFolderPath(Environment.SpecialFolder.Windows));
-    private static readonly string System32 = Environment.SystemDirectory;
 
     private static readonly string[] ProgramFolders =
     [
@@ -91,53 +91,8 @@ internal sealed class ServicePublisher
         return new Publisher(inWindows ? Publisher.WindowsName : Publisher.UnknownName, program, product, false);
     }
 
-    /// <summary>
-    /// The program in a registered command line: quoted, or the longest prefix ending in .exe/.sys/.dll
-    /// (paths with spaces are often registered unquoted), with the kernel's path forms made ordinary.
-    /// </summary>
-    public static string ProgramPath(string imagePath)
-    {
-        var text = imagePath.Trim();
-        if (text.Length == 0)
-            return string.Empty;
-
-        string path;
-        if (text[0] == '"')
-        {
-            var end = text.IndexOf('"', 1);
-            path = end > 0 ? text[1..end] : text[1..];
-        }
-        else
-        {
-            path = text;
-            var found = false;
-            foreach (var extension in (ReadOnlySpan<string>)[".exe", ".sys", ".dll"])
-            {
-                var at = text.IndexOf(extension, StringComparison.OrdinalIgnoreCase);
-                if (at > 0 && (at + 4 == text.Length || text[at + 4] == ' '))
-                {
-                    path = text[..(at + 4)];
-                    found = true;
-                    break;
-                }
-            }
-
-            if (!found && text.IndexOf(' ') is var space and > 0)
-                path = text[..space];
-        }
-
-        path = Environment.ExpandEnvironmentVariables(path);
-        if (path.StartsWith(@"\??\", StringComparison.Ordinal))
-            path = path[4..];
-        if (path.StartsWith(@"\SystemRoot\", StringComparison.OrdinalIgnoreCase))
-            path = Path.Join(WindowsFolder, path[12..]);
-        else if (path.StartsWith(@"System32\", StringComparison.OrdinalIgnoreCase) || path.StartsWith(@"SysWOW64\", StringComparison.OrdinalIgnoreCase))
-            path = Path.Join(WindowsFolder, path);
-        else if (!Path.IsPathRooted(path))
-            path = Path.Join(System32, path);
-
-        return path;
-    }
+    /// <summary>The program in a registered command line (<see cref="CommandLine.ProgramPath"/>).</summary>
+    public static string ProgramPath(string imagePath) => CommandLine.ProgramPath(imagePath);
 
     private static bool IsSvchost(string program) =>
         string.Equals(Path.GetFileName(program), "svchost.exe", StringComparison.OrdinalIgnoreCase);

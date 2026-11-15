@@ -119,6 +119,34 @@ internal static unsafe partial class Accounts
         return account;
     }
 
+    /// <summary>The account a SID in text form names (a scheduled task's principal); null when it isn't a SID.</summary>
+    public static Account? FromSid(string sid)
+    {
+        if (!sid.StartsWith("S-", StringComparison.OrdinalIgnoreCase))
+            return null;
+
+        void* binary;
+        fixed (char* text = sid)
+        {
+            if (!ConvertStringSidToSid(text, &binary))
+                return null;
+        }
+
+        try
+        {
+            var name = stackalloc char[256];
+            var domain = stackalloc char[256];
+            uint nameLength = 256, domainLength = 256;
+            return LookupAccountSid(null, binary, name, ref nameLength, domain, ref domainLength, out var use)
+                ? new Account(sid, new string(name, 0, (int)nameLength), domainLength > 0 ? new string(domain, 0, (int)domainLength) : null, Classify(sid, use))
+                : new Account(sid, sid, null, Classify(sid, 0));
+        }
+        finally
+        {
+            LocalFree(binary);
+        }
+    }
+
     /// <summary>S-1-{authority}-{sub-authority}…, as <c>ConvertSidToStringSid</c> writes it.</summary>
     public static string SidText(ReadOnlySpan<byte> sid)
     {
@@ -162,4 +190,11 @@ internal static unsafe partial class Accounts
     [LibraryImport("kernel32.dll")]
     [return: MarshalAs(UnmanagedType.Bool)]
     private static partial bool CloseHandle(nint handle);
+
+    [LibraryImport("advapi32.dll", EntryPoint = "ConvertStringSidToSidW")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static partial bool ConvertStringSidToSid(char* sid, void** binary);
+
+    [LibraryImport("kernel32.dll")]
+    private static partial nint LocalFree(void* memory);
 }

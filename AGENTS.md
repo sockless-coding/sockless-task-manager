@@ -95,13 +95,33 @@ src/SocklessTaskManager/
                         The edit form has services.msc's pages: General, Log on (a person's account is granted
                         SeServiceLogonRight through the LSA, or the service won't start) and Recovery (failure
                         actions; Windows repeats the last one, and a computer restart needs SeShutdownPrivilege).
+    Autostart/          a top-level feature: everything Windows starts or loads on its own, as Autoruns lists it.
+                        Sources/ reads each kind: Run keys, Startup folders and packaged apps' startup tasks
+                        (SignInSources), scheduled tasks (Task Scheduler COM by vtable, TaskScheduler.cs: the
+                        Tasks folder and TaskCache are admin-only, the service isn't), services and drivers (the
+                        Services key, not the Services slice), Explorer and browser add-ins and per-user COM class
+                        overrides, Office add-ins, Winlogon, boot, program-launch, AppInit, LSA, network, print and
+                        time providers, cmd and PowerShell start-up, and WMI subscriptions (WMI COM by vtable).
+                        AutostartScanner reads the files' version info, then checks signatures (SignatureChecker:
+                        WinVerifyTrust, embedded then catalog, never online) and publishes as it goes. It scans when
+                        first shown, on Refresh and after a change; nothing runs per tick. Things to know:
+                        - Off is always undoable (AutostartChanges): Windows' own switch where there is one
+                          (StartupApproved, a task's Enabled, a packaged task's State, a service's startup type,
+                          remembered under HKLM\SOFTWARE\Sockless Task Manager), else the value or key moved into a
+                          "Sockless disabled" key beside it, which every source skips when listing.
+                        - Removing saves first (.reg, task XML, or the file) in %LOCALAPPDATA%\Sockless Task
+                          Manager\Autostart backups. Services and drivers are uninstalled on the Services page.
+                        - "Windows' own" (hidden by default) means signed by Microsoft as part of Windows, not
+                          just a Microsoft company name; Windows' own entries in critical categories (drivers,
+                          Winlogon, boot, LSA, network, print, AppInit) can't be changed here.
     Updates/            not a page: the top bar's update offer. Reads the latest tag from GitHub's /releases/latest
                         redirect, downloads the release zip, checks its .sha256, renames running files to .old and
                         moves the new ones in, then restarts. Local builds are version 0.0.0 and never check;
                         the asset names must match release.yml.
 ```
 
-A slice owns everything it needs: native calls, sensor, view model and view. Slices don't reference each other. Code moves into `Core/` only when a second slice needs it (PDH, `GetPerformanceInfo` and `NtQuerySystemInformation` with its process-list parser are there for that reason, as are `Accounts` (process token owners), `Elevation` and `Confirmation`, shared by Processes and Users, `AddressSpace`, shared by Processes and Memory, `EtwSession` (a real-time ETW session) with the kernel's process-start event, shared by Processes and Network, and `Privileges` (enable a token privilege), shared by Storage and Services).
+A slice owns everything it needs: native calls, sensor, view model and view. Slices don't reference each other. Code moves into `Core/` only when a second slice needs it (PDH, `GetPerformanceInfo` and `NtQuerySystemInformation` with its process-list parser are there for that reason, as are `Accounts` (process token owners), `Elevation` and `Confirmation`, shared by Processes and Users, `AddressSpace`, shared by Processes and Memory, `EtwSession` (a real-time ETW session) with the kernel's process-start event, shared by Processes and Network, and `Privileges` (enable a token privilege), shared by Storage and Services, and `CommandLine` (the program in a
+registered command line), shared by Services and Autostart).
 
 When one slice needs to show another's page, it goes through `Core/Navigator.cs`: Users and Memory call `ShowProcesses(new ProcessQuery(...))`, the Processes feature applies it and calls `Open(this)`, and the shell selects it. Pages may list processes in their own terms (shares of memory, a user's processes), but a process's details, actions and drill-downs live only on the Processes page: a row elsewhere opens it there rather than growing details of its own. If a page needs more than `ProcessQuery` offers, add it there.
 
