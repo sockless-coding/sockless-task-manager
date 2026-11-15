@@ -14,14 +14,15 @@ public sealed class ShellViewModel : ObservableObject, IDisposable
     private Feature _selectedFeature;
     private bool _isSidebarOpen = true;
 
-    public ShellViewModel(SampleClock clock, Navigator navigator, IReadOnlyList<Feature> features, Updater updates)
+    public ShellViewModel(SampleClock clock, Navigator navigator, IReadOnlyList<Feature> features, Updater updates, string? startPage = null)
     {
         _clock = clock;
         _navigator = navigator;
         Features = features;
         Updates = updates;
-        _selectedFeature = features[0];
+        _selectedFeature = features.FirstOrDefault(f => f.Title == startPage) ?? features[0];
         navigator.Current = _selectedFeature;
+        Elevation.CurrentPage = _selectedFeature.Title;
         TogglePauseCommand = new RelayCommand(() => _clock.IsPaused = !_clock.IsPaused);
         _clock.PropertyChanged += OnClockChanged;
         navigator.OpenRequested += feature => SelectedFeature = feature;
@@ -38,7 +39,10 @@ public sealed class ShellViewModel : ObservableObject, IDisposable
         {
             // The nav list can momentarily clear its selection; a page is always shown.
             if (value is not null && Set(ref _selectedFeature, value))
+            {
                 _navigator.Current = value;
+                Elevation.CurrentPage = value.Title;
+            }
         }
     }
 
@@ -66,6 +70,15 @@ public sealed class ShellViewModel : ObservableObject, IDisposable
     public bool Pulse => !_clock.IsPaused && !_motionReduced;
 
     public ICommand TogglePauseCommand { get; }
+
+    public bool IsElevated => Elevation.IsElevated;
+
+    public bool CanRestartElevated => !Elevation.IsElevated;
+
+    /// <summary>As Windows' own tools do, the taskbar and Alt+Tab say when this copy runs as administrator.</summary>
+    public string WindowTitle => Elevation.IsElevated ? "Sockless Task Manager (Administrator)" : "Sockless Task Manager";
+
+    public ICommand RestartElevatedCommand { get; } = new RelayCommand(Elevation.Restart);
 
     private void OnClockChanged(object? sender, PropertyChangedEventArgs e)
     {

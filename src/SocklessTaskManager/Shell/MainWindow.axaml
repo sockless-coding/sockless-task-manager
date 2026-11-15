@@ -11,7 +11,7 @@
         xmlns:chrome="using:Avalonia.Controls.Chrome"
         x:Class="Sockless.TaskManager.Shell.MainWindow"
         x:DataType="shell:ShellViewModel"
-        Title="Sockless Task Manager"
+        Title="{Binding WindowTitle}"
         Icon="/Assets/app.ico"
         Width="1280" Height="800" MinWidth="900" MinHeight="560"
         WindowStartupLocation="CenterScreen"
@@ -95,6 +95,23 @@
                 <TextBlock Text="{Binding Updates.ButtonText}" VerticalAlignment="Center" />
               </StackPanel>
             </Button>
+            <!-- Elevation, for every page: a way up when not elevated, a word saying so when it is. -->
+            <Button Theme="{StaticResource SoftButton}" Command="{Binding RestartElevatedCommand}"
+                    IsVisible="{Binding CanRestartElevated}"
+                    ToolTip.Tip="Restart as administrator to see and act on every user's processes, services and connections"
+                    chrome:WindowDecorationProperties.ElementRole="User">
+              <StackPanel Orientation="Horizontal" Spacing="6">
+                <ctl:Icon Width="16" Height="16" Data="{StaticResource IconShield}" />
+                <TextBlock Text="Run as administrator" VerticalAlignment="Center" />
+              </StackPanel>
+            </Button>
+            <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center"
+                        IsVisible="{Binding IsElevated}"
+                        ToolTip.Tip="Running as administrator">
+              <ctl:Icon Width="16" Height="16" Data="{StaticResource IconShield}" Foreground="{StaticResource SlTextMuted}" />
+              <TextBlock Text="Administrator" FontSize="{StaticResource SlTextSmall}"
+                         Foreground="{StaticResource SlTextMuted}" VerticalAlignment="Center" />
+            </StackPanel>
             <Border Classes="live" Classes.paused="{Binding IsPaused}">
               <StackPanel Orientation="Horizontal" Spacing="8">
                 <Ellipse Classes="dot" Classes.pulse="{Binding Pulse}"

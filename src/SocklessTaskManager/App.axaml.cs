@@ -38,7 +38,7 @@ public sealed class App : Application
                 new ServicesFeature(clock, navigator),
             ];
 
-            var shell = new ShellViewModel(clock, navigator, features, new Updater());
+            var shell = new ShellViewModel(clock, navigator, features, new Updater(), Elevation.StartPage(desktop.Args ?? []));
             desktop.MainWindow = new MainWindow { DataContext = shell };
             desktop.Exit += (_, _) => shell.Dispose();
 
