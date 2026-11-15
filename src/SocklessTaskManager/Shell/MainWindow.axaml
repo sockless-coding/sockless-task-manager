@@ -12,6 +12,7 @@
         x:Class="Sockless.TaskManager.Shell.MainWindow"
         x:DataType="shell:ShellViewModel"
         Title="{Binding WindowTitle}"
+        Topmost="{Binding IsAlwaysOnTop}"
         Icon="/Assets/app.ico"
         Width="1280" Height="800" MinWidth="900" MinHeight="560"
         WindowStartupLocation="CenterScreen"
@@ -112,6 +113,23 @@
               <TextBlock Text="Administrator" FontSize="{StaticResource SlTextSmall}"
                          Foreground="{StaticResource SlTextMuted}" VerticalAlignment="Center" />
             </StackPanel>
+            <!-- Always on top: accent and the words "On top" while it's on, so the state isn't colour alone. -->
+            <ToggleButton Theme="{StaticResource ChromeButton}" VerticalAlignment="Center"
+                          IsChecked="{Binding IsAlwaysOnTop}"
+                          AutomationProperties.Name="Always on top"
+                          ToolTip.Tip="{Binding AlwaysOnTopHint}"
+                          chrome:WindowDecorationProperties.ElementRole="User">
+              <ToggleButton.Styles>
+                <Style Selector="ToggleButton:checked">
+                  <Setter Property="Foreground" Value="{StaticResource SlAccent}" />
+                </Style>
+              </ToggleButton.Styles>
+              <StackPanel Orientation="Horizontal" Spacing="6">
+                <ctl:Icon Width="20" Height="20" Data="{StaticResource IconOnTop}" />
+                <TextBlock Text="On top" FontSize="{StaticResource SlTextSmall}" FontWeight="Medium"
+                           VerticalAlignment="Center" IsVisible="{Binding IsAlwaysOnTop}" />
+              </StackPanel>
+            </ToggleButton>
             <Border Classes="live" Classes.paused="{Binding IsPaused}">
               <StackPanel Orientation="Horizontal" Spacing="8">
                 <Ellipse Classes="dot" Classes.pulse="{Binding Pulse}"

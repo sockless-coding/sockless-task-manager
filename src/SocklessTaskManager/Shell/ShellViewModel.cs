@@ -11,6 +11,7 @@ public sealed class ShellViewModel : ObservableObject, IDisposable
     private readonly SampleClock _clock;
     private readonly Navigator _navigator;
     private readonly bool _motionReduced = Motion.IsReduced;
+    private readonly ShellSettings _settings = ShellSettings.Load();
     private Feature _selectedFeature;
     private bool _isSidebarOpen = true;
 
@@ -57,6 +58,26 @@ public sealed class ShellViewModel : ObservableObject, IDisposable
     }
 
     public double SidebarWidth => _isSidebarOpen ? 240 : 64;
+
+    /// <summary>Keeps the window above others, as Task Manager's "Always on top" does. Remembered across runs.</summary>
+    public bool IsAlwaysOnTop
+    {
+        get => _settings.AlwaysOnTop;
+        set
+        {
+            if (_settings.AlwaysOnTop == value)
+                return;
+
+            _settings.AlwaysOnTop = value;
+            _settings.Save();
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(AlwaysOnTopHint));
+        }
+    }
+
+    public string AlwaysOnTopHint => _settings.AlwaysOnTop
+        ? "Always on top: on. Click to let other windows cover this one"
+        : "Keep this window on top of other windows";
 
     public bool IsPaused => _clock.IsPaused;
 
