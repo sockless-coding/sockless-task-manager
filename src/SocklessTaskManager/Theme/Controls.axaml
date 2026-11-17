@@ -620,6 +620,12 @@
     <Setter Property="TextElement.Foreground" Value="{StaticResource SlInfo}" />
   </Style>
 
+  <Style Selector="Border.badge.danger">
+    <Setter Property="Background" Value="{StaticResource SlDangerTint10}" />
+    <Setter Property="BorderBrush" Value="{StaticResource SlDangerTint20}" />
+    <Setter Property="TextElement.Foreground" Value="{StaticResource SlDanger}" />
+  </Style>
+
   <!-- Callout (components.md → Callouts): a 5% status tint, 20% rim, card radius; one or two sentences. -->
   <Style Selector="Border.callout">
     <Setter Property="CornerRadius" Value="{StaticResource SlRadiusMd}" />

@@ -95,6 +95,27 @@ src/SocklessTaskManager/
                         The edit form has services.msc's pages: General, Log on (a person's account is granted
                         SeServiceLogonRight through the LSA, or the service won't start) and Recovery (failure
                         actions; Windows repeats the last one, and a computer restart needs SeShutdownPrivilege).
+    Drivers/            a top-level feature, in five tabs. Devices: every device Windows knows (CfgMgr32, Sources/
+                        DeviceTree.cs: CM_Get_Device_ID_List and DEVPKEY properties) by class, with Device Manager's
+                        problem codes in words (DriverText). Kernel modules: what's loaded now (Core/Interop/
+                        KernelModules), matched to driver services (the Services key) and signature-checked. Updates:
+                        Windows Update's driver offers (Updates/WindowsUpdate.cs, the WUA COM API by vtable; slots
+                        from wuapi.h), matched to devices by hardware id; an INF from disk installs with newdev
+                        (DriverPackages: DiInstallDriver, or UpdateDriverForPlugAndPlayDevices for one device, which
+                        asks before forcing a driver Windows ranks lower). Installing needs an administrator.
+                        Changes: the Kernel-PnP configuration log and the System log (EventLog.cs, wevtapi, events
+                        rendered as XML and read by hand to keep System.Xml out), plus DriverMonitor, which follows
+                        CM_Register_Notification from app start and diffs only the devices that changed.
+                        Crashes (CrashHistory): stop errors, unexpected restarts, display driver resets and live
+                        kernel events from the System and Application logs, with the driver blamed by WER's bucket
+                        or, elevated, by the dump (KernelDump: header by offset, then a minidump's driver list and
+                        stack). Things to know:
+                        - WER logs a report again on every upload retry: one row per report id, dated by its dump.
+                        - The dump stack loads storage drivers as dump_<name>.sys; the file is <name>.sys.
+                        - Drivers that passed Microsoft's hardware program are signed "Microsoft Windows Hardware
+                          Compatibility Publisher": not Windows' own.
+                        - Nothing runs per tick: scans on first show, Refresh and device changes; Windows Update is
+                          asked on first show and "Check again".
     Autostart/          a top-level feature: everything Windows starts or loads on its own, as Autoruns lists it.
                         Sources/ reads each kind: Run keys, Startup folders and packaged apps' startup tasks
                         (SignInSources), scheduled tasks (Task Scheduler COM by vtable, TaskScheduler.cs: the
@@ -147,7 +168,8 @@ src/SocklessTaskManager/
 ```
 
 A slice owns everything it needs: native calls, sensor, view model and view. Slices don't reference each other. Code moves into `Core/` only when a second slice needs it (PDH, `GetPerformanceInfo` and `NtQuerySystemInformation` with its process-list parser are there for that reason, as are `Accounts` (process token owners), `Elevation` and `Confirmation`, shared by Processes and Users, `AddressSpace`, shared by Processes and Memory, `EtwSession` (a real-time ETW session) with the kernel's process-start event, shared by Processes and Network, and `Privileges` (enable a token privilege), shared by Storage and Services, `CommandLine` (the program in a
-registered command line), shared by Services, Autostart and Apps, and `Backups` (.reg exports and the backups folders,
+registered command line), shared by Services, Autostart and Apps, `Com` (COM by vtable) and `SignatureChecker`, shared by
+Autostart and Drivers, `KernelModules`, shared by Memory and Drivers, and `Backups` (.reg exports and the backups folders,
 opening Registry Editor at a key), shared by Autostart and Apps).
 
 When one slice needs to show another's page, it goes through `Core/Navigator.cs`: Users and Memory call `ShowProcesses(new ProcessQuery(...))`, the Processes feature applies it and calls `Open(this)`, and the shell selects it. Pages may list processes in their own terms (shares of memory, a user's processes), but a process's details, actions and drill-downs live only on the Processes page: a row elsewhere opens it there rather than growing details of its own. If a page needs more than `ProcessQuery` offers, add it there.

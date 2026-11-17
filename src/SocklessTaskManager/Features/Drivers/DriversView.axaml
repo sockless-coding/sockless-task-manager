@@ -1,0 +1,610 @@
+<!--
+  Drivers page: title and counts, the tabs (devices, kernel modules, updates, changes, crashes) with
+  Refresh and "Install from INF", then each tab's filters and search, callouts for what needs
+  administrator rights, and the tab's table with the selected row's details beside it. Narrow
+  windows show the details over the table instead (code-behind). Installing everything, and forcing
+  a driver Windows ranks lower, ask first in a dialog over the page.
+-->
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:ctl="using:Sockless.TaskManager.Controls"
+             xmlns:drv="using:Sockless.TaskManager.Features.Drivers"
+             x:Class="Sockless.TaskManager.Features.Drivers.DriversView"
+             x:DataType="drv:DriverList">
+
+  <UserControl.Resources>
+    <DataTemplate x:Key="SortHeaderTemplate" x:DataType="drv:DriverColumn">
+      <Button Theme="{StaticResource SortHeader}" Classes.active="{Binding IsActive}"
+              Command="{Binding SortCommand}" AutomationProperties.Name="{Binding AccessibleName}">
+        <StackPanel Orientation="Horizontal" Spacing="4">
+          <TextBlock Text="{Binding Title}" />
+          <ctl:Icon Width="12" Height="12" VerticalAlignment="Center" Data="{Binding Glyph}" IsVisible="{Binding IsActive}" />
+        </StackPanel>
+      </Button>
+    </DataTemplate>
+
+    <!-- Status is never colour alone: the badge always carries its word. -->
+    <DataTemplate x:Key="BadgeTemplate" x:DataType="drv:Badge">
+      <Border Classes="badge" Classes.success="{Binding IsSuccess}" Classes.warning="{Binding IsWarning}"
+              Classes.danger="{Binding IsDanger}" Classes.info="{Binding IsInfo}"
+              HorizontalAlignment="Left" VerticalAlignment="Center" IsVisible="{Binding HasText}">
+        <TextBlock Text="{Binding Text}" TextTrimming="CharacterEllipsis" />
+      </Border>
+    </DataTemplate>
+
+    <DataTemplate x:Key="FactTemplate" x:DataType="drv:DriverFact">
+      <Grid ColumnDefinitions="112,*" ColumnSpacing="8" Margin="0,3">
+        <TextBlock Classes="caption" Text="{Binding Label}" TextWrapping="Wrap" />
+        <SelectableTextBlock Grid.Column="1" Text="{Binding Value}" TextWrapping="Wrap"
+                             FontFamily="{StaticResource SlFontMono}" FontSize="{StaticResource SlTextSmall}"
+                             SelectionBrush="{StaticResource SlAccentTint30}" />
+      </Grid>
+    </DataTemplate>
+
+    <DataTemplate x:Key="FactGroupTemplate" x:DataType="drv:DriverFactGroup">
+      <StackPanel Spacing="6" Margin="0,0,0,16">
+        <ctl:CapsText Classes="label" Value="{Binding Title}" />
+        <ItemsControl ItemsSource="{Binding Facts}" ItemTemplate="{StaticResource FactTemplate}" />
+      </StackPanel>
+    </DataTemplate>
+
+    <!-- The details pane (drv:DriverDetails), for whichever tab's row is selected. -->
+    <DataTemplate x:Key="DetailsTemplate" x:DataType="drv:DriverDetails">
+      <Border Classes="card" Padding="0" ClipToBounds="True">
+        <DockPanel>
+          <Border DockPanel.Dock="Top" Padding="20,16" BorderBrush="{StaticResource SlBorder}" BorderThickness="0,0,0,1">
+            <StackPanel Spacing="14">
+              <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="8">
+                <StackPanel Spacing="2">
+                  <TextBlock Classes="section-title" Text="{Binding Name}" TextWrapping="Wrap" />
+                  <TextBlock Classes="caption" Text="{Binding Subtitle}" TextWrapping="Wrap" />
+                </StackPanel>
+                <ContentControl Grid.Column="1" VerticalAlignment="Top" Content="{Binding Status}" ContentTemplate="{StaticResource BadgeTemplate}" />
+                <Button Grid.Column="2" Theme="{StaticResource IconButton}" VerticalAlignment="Top"
+                        Command="{Binding CloseCommand}" AutomationProperties.Name="Close details" ToolTip.Tip="Close (Esc)">
+                  <ctl:Icon Width="14" Height="14" Data="{StaticResource IconClose}" />
+                </Button>
+              </Grid>
+
+              <StackPanel Spacing="10" IsEnabled="{Binding IsIdle}">
+                <WrapPanel ItemSpacing="8" LineSpacing="8">
+                  <Button Theme="{StaticResource SoftButton}" Command="{Binding InstallUpdateCommand}"
+                          IsVisible="{Binding ShowInstallUpdate}" IsEnabled="{Binding CanInstallUpdate}"
+                          ToolTip.Tip="Download and install it from Windows Update">
+                    <StackPanel Orientation="Horizontal" Spacing="6">
+                      <ctl:Icon Width="14" Height="14" Data="{StaticResource IconDownload}" />
+                      <TextBlock Text="Install update" VerticalAlignment="Center" />
+                    </StackPanel>
+                  </Button>
+                  <Button Theme="{StaticResource SoftButton}" Command="{Binding UpdateFromFileCommand}"
+                          IsVisible="{Binding ShowUpdateFromFile}" IsEnabled="{Binding CanUpdateFromFile}"
+                          ToolTip.Tip="Install a driver for this device from an INF file, as Device Manager's &quot;Browse my computer&quot; does">
+                    <StackPanel Orientation="Horizontal" Spacing="6">
+                      <ctl:Icon Width="14" Height="14" Data="{StaticResource IconFolderOpen}" />
+                      <TextBlock Text="Update from file…" VerticalAlignment="Center" />
+                    </StackPanel>
+                  </Button>
+                  <Button Theme="{StaticResource SoftButton}" Command="{Binding OpenLocationCommand}"
+                          IsVisible="{Binding CanOpenLocation}" ToolTip.Tip="Show the file in File Explorer">
+                    <StackPanel Orientation="Horizontal" Spacing="6">
+                      <ctl:Icon Width="14" Height="14" Data="{StaticResource IconFolder}" />
+                      <TextBlock Text="{Binding OpenLocationText}" VerticalAlignment="Center" />
+                    </StackPanel>
+                  </Button>
+                </WrapPanel>
+
+                <StackPanel Spacing="4" IsVisible="{Binding HasNeedsElevation}">
+                  <TextBlock Classes="caption" TextWrapping="Wrap" Text="{Binding NeedsElevation}" />
+                  <Button Theme="{StaticResource LinkButton}" Command="{Binding RestartElevatedCommand}" HorizontalAlignment="Left">
+                    <StackPanel Orientation="Horizontal" Spacing="4">
+                      <ctl:Icon Width="14" Height="14" Data="{StaticResource IconShield}" />
+                      <TextBlock Text="Restart as administrator" FontSize="{StaticResource SlTextSmall}" VerticalAlignment="Center" />
+                    </StackPanel>
+                  </Button>
+                </StackPanel>
+              </StackPanel>
+
+              <Border Classes="callout" Classes.danger="{Binding MessageIsError}" IsVisible="{Binding HasMessage}">
+                <Grid ColumnDefinitions="Auto,*" ColumnSpacing="8">
+                  <ctl:Icon Classes="status" Width="16" Height="16" VerticalAlignment="Top"
+                            Data="{StaticResource IconWarning}" IsVisible="{Binding MessageIsError}" />
+                  <TextBlock Grid.Column="1" Text="{Binding Message}" TextWrapping="Wrap" FontSize="{StaticResource SlTextSmall}" />
+                </Grid>
+              </Border>
+            </StackPanel>
+          </Border>
+
+          <ScrollViewer HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
+            <StackPanel Spacing="16" Margin="20,14,20,20">
+              <Border Classes="callout warning" IsVisible="{Binding HasLook}">
+                <Grid ColumnDefinitions="Auto,*" ColumnSpacing="8">
+                  <ctl:Icon Classes="status" Width="16" Height="16" VerticalAlignment="Top" Data="{StaticResource IconWarning}" />
+                  <StackPanel Grid.Column="1" Spacing="2">
+                    <TextBlock Text="{Binding LookTitle}" FontWeight="SemiBold" FontSize="{StaticResource SlTextSmall}" TextWrapping="Wrap" />
+                    <TextBlock Text="{Binding LookText}" TextWrapping="Wrap" FontSize="{StaticResource SlTextSmall}" />
+                  </StackPanel>
+                </Grid>
+              </Border>
+
+              <TextBlock Text="{Binding About}" TextWrapping="Wrap" IsVisible="{Binding HasAbout}"
+                         Foreground="{StaticResource SlTextSecondary}" FontSize="{StaticResource SlTextSmall}" />
+
+              <ItemsControl ItemsSource="{Binding Groups}" ItemTemplate="{StaticResource FactGroupTemplate}" />
+
+              <WrapPanel ItemSpacing="16" LineSpacing="4">
+                <Button Theme="{StaticResource LinkButton}" Command="{Binding ShowDeviceCommand}" IsVisible="{Binding CanShowDevice}"
+                        ToolTip.Tip="Open it on the Devices tab">
+                  <StackPanel Orientation="Horizontal" Spacing="4">
+                    <TextBlock Text="Show device" FontSize="{StaticResource SlTextSmall}" VerticalAlignment="Center" />
+                    <ctl:Icon Width="14" Height="14" Data="{StaticResource IconChevronRight}" />
+                  </StackPanel>
+                </Button>
+                <Button Theme="{StaticResource LinkButton}" Command="{Binding ShowModuleCommand}" IsVisible="{Binding CanShowModule}"
+                        ToolTip.Tip="Open the loaded driver on the Kernel modules tab">
+                  <StackPanel Orientation="Horizontal" Spacing="4">
+                    <TextBlock Text="Show kernel module" FontSize="{StaticResource SlTextSmall}" VerticalAlignment="Center" />
+                    <ctl:Icon Width="14" Height="14" Data="{StaticResource IconChevronRight}" />
+                  </StackPanel>
+                </Button>
+                <Button Theme="{StaticResource LinkButton}" Command="{Binding CopyCommand}" IsVisible="{Binding HasCopy}">
+                  <StackPanel Orientation="Horizontal" Spacing="4">
+                    <ctl:Icon Width="14" Height="14" Data="{StaticResource IconCopy}" />
+                    <TextBlock Text="{Binding CopyText}" FontSize="{StaticResource SlTextSmall}" VerticalAlignment="Center" />
+                  </StackPanel>
+                </Button>
+                <Button Theme="{StaticResource LinkButton}" Command="{Binding OpenDeviceManagerCommand}" IsVisible="{Binding ShowDeviceManager}"
+                        ToolTip.Tip="Roll back, turn off or uninstall the device there">
+                  <StackPanel Orientation="Horizontal" Spacing="4">
+                    <TextBlock Text="Device Manager" FontSize="{StaticResource SlTextSmall}" VerticalAlignment="Center" />
+                    <ctl:Icon Width="14" Height="14" Data="{StaticResource IconChevronRight}" />
+                  </StackPanel>
+                </Button>
+              </WrapPanel>
+            </StackPanel>
+          </ScrollViewer>
+        </DockPanel>
+      </Border>
+    </DataTemplate>
+
+    <ControlTheme x:Key="TableItems" TargetType="ItemsControl">
+      <Setter Property="Template">
+        <ControlTemplate>
+          <ScrollViewer HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
+            <ItemsPresenter Name="PART_ItemsPresenter" ItemsPanel="{TemplateBinding ItemsPanel}" />
+          </ScrollViewer>
+        </ControlTemplate>
+      </Setter>
+      <Setter Property="ItemsPanel">
+        <ItemsPanelTemplate>
+          <VirtualizingStackPanel />
+        </ItemsPanelTemplate>
+      </Setter>
+    </ControlTheme>
+  </UserControl.Resources>
+
+  <UserControl.Styles>
+    <Style Selector="TextBlock.cell">
+      <Setter Property="FontSize" Value="{StaticResource SlTextSmall}" />
+      <Setter Property="VerticalAlignment" Value="Center" />
+      <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+    </Style>
+    <Style Selector="Button.selected TextBlock.name">
+      <Setter Property="FontWeight" Value="SemiBold" />
+    </Style>
+    <Style Selector="Button.entry">
+      <Setter Property="Padding" Value="24,6" />
+    </Style>
+    <!-- Grouped, devices sit under their class heading, and the Class column would only repeat it. -->
+    <Style Selector="ItemsControl.grouped Button.entry">
+      <Setter Property="Padding" Value="48,6,24,6" />
+    </Style>
+    <Style Selector="ItemsControl.grouped TextBlock.class">
+      <Setter Property="IsVisible" Value="False" />
+    </Style>
+    <Style Selector="StackPanel.empty">
+      <Setter Property="Spacing" Value="8" />
+      <Setter Property="Margin" Value="24,64" />
+      <Setter Property="HorizontalAlignment" Value="Center" />
+      <Setter Property="VerticalAlignment" Value="Top" />
+    </Style>
+  </UserControl.Styles>
+
+  <Panel>
+    <Grid RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,*" Margin="{StaticResource SlContentPadding}" IsEnabled="{Binding !HasConfirmation}">
+      <StackPanel Spacing="4" Margin="0,0,0,16">
+        <TextBlock Classes="page-title" Text="Drivers" />
+        <TextBlock Classes="secondary" Text="{Binding Summary}" TextWrapping="Wrap" />
+      </StackPanel>
+
+      <!-- ========== Tabs ========== -->
+      <Grid Grid.Row="1" ColumnDefinitions="Auto,*,Auto,Auto" ColumnSpacing="12" Margin="0,0,0,12">
+        <StackPanel Orientation="Horizontal" Spacing="4" VerticalAlignment="Center" AutomationProperties.Name="View">
+          <RadioButton Theme="{StaticResource SegmentButton}" GroupName="DriversTab" Content="Devices"
+                       IsChecked="{Binding IsDevicesTab}" ToolTip.Tip="Every device and the driver it runs on" />
+          <RadioButton Theme="{StaticResource SegmentButton}" GroupName="DriversTab" Content="Kernel modules"
+                       IsChecked="{Binding IsModulesTab}" ToolTip.Tip="Every driver loaded now, with or without a device" />
+          <RadioButton Theme="{StaticResource SegmentButton}" GroupName="DriversTab" Content="{Binding UpdatesTabText}"
+                       IsChecked="{Binding IsUpdatesTab}" ToolTip.Tip="Driver updates Windows Update offers" />
+          <RadioButton Theme="{StaticResource SegmentButton}" GroupName="DriversTab" Content="Changes"
+                       IsChecked="{Binding IsChangesTab}" ToolTip.Tip="Drivers installed, devices connected and removed, problems" />
+          <RadioButton Theme="{StaticResource SegmentButton}" GroupName="DriversTab" Content="Crashes"
+                       IsChecked="{Binding IsCrashesTab}" ToolTip.Tip="Stop errors, unexpected restarts, display driver resets and recovered hangs" />
+        </StackPanel>
+
+        <Button Grid.Column="2" Theme="{StaticResource SoftButton}" VerticalAlignment="Center" Command="{Binding InstallInfCommand}"
+                IsEnabled="{Binding IsElevated}"
+                ToolTip.Tip="Add a driver package from an INF file and install it on the devices it fits (needs administrator rights)">
+          <StackPanel Orientation="Horizontal" Spacing="6">
+            <ctl:Icon Width="14" Height="14" Data="{StaticResource IconFolderOpen}" />
+            <TextBlock Text="Install from INF…" VerticalAlignment="Center" />
+          </StackPanel>
+        </Button>
+
+        <Button Grid.Column="3" Theme="{StaticResource SoftButton}" VerticalAlignment="Center" Command="{Binding RefreshCommand}"
+                IsEnabled="{Binding IsIdle}" ToolTip.Tip="Read devices, modules, history and crashes again (F5)">
+          <StackPanel Orientation="Horizontal" Spacing="6">
+            <ctl:Icon Width="14" Height="14" Data="{StaticResource IconRefresh}" />
+            <TextBlock Text="Refresh" VerticalAlignment="Center" />
+          </StackPanel>
+        </Button>
+      </Grid>
+
+      <!-- ========== Filters and search ========== -->
+      <Grid Grid.Row="2" ColumnSpacing="16" Margin="0,0,0,12">
+        <Grid.ColumnDefinitions>
+          <ColumnDefinition Width="Auto" />
+          <ColumnDefinition Width="*" MaxWidth="320" />
+          <ColumnDefinition Width="*" />
+          <ColumnDefinition Width="Auto" />
+        </Grid.ColumnDefinitions>
+
+        <Panel VerticalAlignment="Center">
+          <StackPanel Orientation="Horizontal" Spacing="4" IsVisible="{Binding IsDevicesTab}" AutomationProperties.Name="Show devices">
+            <RadioButton Theme="{StaticResource SegmentButton}" GroupName="DevicesShow" Content="Connected"
+                         IsChecked="{Binding IsDevicesConnected}" ToolTip.Tip="Devices connected now, as Device Manager shows them" />
+            <RadioButton Theme="{StaticResource SegmentButton}" GroupName="DevicesShow" Content="Problems"
+                         IsChecked="{Binding IsDevicesProblems}" ToolTip.Tip="Devices with a problem code: Device Manager's yellow mark" />
+            <RadioButton Theme="{StaticResource SegmentButton}" GroupName="DevicesShow" Content="Third-party"
+                         IsChecked="{Binding IsDevicesThirdParty}" ToolTip.Tip="Devices whose driver was added to Windows, not shipped with it" />
+            <RadioButton Theme="{StaticResource SegmentButton}" GroupName="DevicesShow" Content="All"
+                         IsChecked="{Binding IsDevicesAll}" ToolTip.Tip="Every device Windows knows: hidden ones and ones not connected too" />
+          </StackPanel>
+          <StackPanel Orientation="Horizontal" Spacing="4" IsVisible="{Binding IsModulesTab}" AutomationProperties.Name="Show modules">
+            <RadioButton Theme="{StaticResource SegmentButton}" GroupName="ModulesShow" Content="All"
+                         IsChecked="{Binding IsModulesAll}" ToolTip.Tip="Every loaded kernel module" />
+            <RadioButton Theme="{StaticResource SegmentButton}" GroupName="ModulesShow" Content="Third-party"
+                         IsChecked="{Binding IsModulesThirdParty}" ToolTip.Tip="Modules not signed as part of Windows" />
+            <RadioButton Theme="{StaticResource SegmentButton}" GroupName="ModulesShow" Content="To check"
+                         IsChecked="{Binding IsModulesLook}" ToolTip.Tip="Unsigned files, signatures that don't verify, and files that aren't there" />
+          </StackPanel>
+          <StackPanel Orientation="Horizontal" Spacing="4" IsVisible="{Binding IsChangesTab}" AutomationProperties.Name="Show changes">
+            <RadioButton Theme="{StaticResource SegmentButton}" GroupName="ChangesShow" Content="All"
+                         IsChecked="{Binding IsChangesAll}" ToolTip.Tip="Everything logged in the last 90 days, and seen live" />
+            <RadioButton Theme="{StaticResource SegmentButton}" GroupName="ChangesShow" Content="Problems"
+                         IsChecked="{Binding IsChangesProblems}" ToolTip.Tip="Device problems and drivers that didn't load" />
+            <RadioButton Theme="{StaticResource SegmentButton}" GroupName="ChangesShow" Content="This session"
+                         IsChecked="{Binding IsChangesLive}" ToolTip.Tip="Changes seen live since the app started" />
+          </StackPanel>
+          <StackPanel Orientation="Horizontal" Spacing="8" IsVisible="{Binding IsUpdatesTab}">
+            <Button Theme="{StaticResource SoftButton}" Command="{Binding CheckUpdatesCommand}" IsEnabled="{Binding CanCheckUpdates}"
+                    ToolTip.Tip="Ask Windows Update again">
+              <StackPanel Orientation="Horizontal" Spacing="6">
+                <ctl:Icon Width="14" Height="14" Data="{StaticResource IconRefresh}" />
+                <TextBlock Text="Check again" VerticalAlignment="Center" />
+              </StackPanel>
+            </Button>
+            <Button Theme="{StaticResource SoftButton}" Command="{Binding InstallAllCommand}" IsEnabled="{Binding CanInstallAll}"
+                    IsVisible="{Binding IsNotInstallingAll}" ToolTip.Tip="Install every update, one at a time (needs administrator rights)">
+              <StackPanel Orientation="Horizontal" Spacing="6">
+                <ctl:Icon Width="14" Height="14" Data="{StaticResource IconDownload}" />
+                <TextBlock Text="Install all" VerticalAlignment="Center" />
+              </StackPanel>
+            </Button>
+            <Button Theme="{StaticResource SoftButton}" Command="{Binding StopInstallAllCommand}" IsVisible="{Binding IsInstallingAll}"
+                    ToolTip.Tip="Finish the update being installed, then stop">
+              <StackPanel Orientation="Horizontal" Spacing="6">
+                <ctl:Icon Width="14" Height="14" Data="{StaticResource IconStop}" />
+                <TextBlock Text="Stop after this one" VerticalAlignment="Center" />
+              </StackPanel>
+            </Button>
+          </StackPanel>
+        </Panel>
+
+        <TextBox Grid.Column="1" x:Name="Search" VerticalContentAlignment="Center"
+                 Text="{Binding SearchText}" PlaceholderText="{Binding SearchHint}"
+                 AutomationProperties.Name="Search" ToolTip.Tip="Search (Ctrl+F)">
+          <TextBox.InnerLeftContent>
+            <ctl:Icon Width="16" Height="16" Margin="10,0,0,0" Foreground="{StaticResource SlTextSecondary}"
+                      Data="{StaticResource IconSearch}" />
+          </TextBox.InnerLeftContent>
+          <TextBox.InnerRightContent>
+            <Button Theme="{StaticResource IconButton}" Margin="0,0,4,0" IsVisible="{Binding HasSearch}"
+                    Command="{Binding ClearSearchCommand}" AutomationProperties.Name="Clear search">
+              <ctl:Icon Width="14" Height="14" Data="{StaticResource IconClose}" />
+            </Button>
+          </TextBox.InnerRightContent>
+        </TextBox>
+
+        <StackPanel Grid.Column="3" Orientation="Horizontal" Spacing="4" VerticalAlignment="Center"
+                    IsVisible="{Binding IsDevicesTab}" AutomationProperties.Name="Layout">
+          <RadioButton Theme="{StaticResource SegmentButton}" GroupName="DevicesLayout" Content="Groups"
+                       IsChecked="{Binding IsGrouped}" ToolTip.Tip="Devices under their class, as Device Manager lists them" />
+          <RadioButton Theme="{StaticResource SegmentButton}" GroupName="DevicesLayout" Content="List"
+                       IsChecked="{Binding IsFlat}" ToolTip.Tip="Every device in one sorted list" />
+        </StackPanel>
+      </Grid>
+
+      <!-- ========== Callouts ========== -->
+      <Border Grid.Row="3" Classes="callout info" Margin="0,0,0,12" IsVisible="{Binding ShowElevationHint}">
+        <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="10">
+          <ctl:Icon Classes="status" Width="16" Height="16" VerticalAlignment="Top" Data="{StaticResource IconShield}" />
+          <TextBlock Grid.Column="1" TextWrapping="Wrap" FontSize="{StaticResource SlTextSmall}"
+                     Text="Everything is listed now. Installing drivers needs administrator rights, and so does reading crash dumps, which is how a crash is tied to the driver involved." />
+          <Button Grid.Column="2" Theme="{StaticResource LinkButton}" VerticalAlignment="Top" Command="{Binding RestartElevatedCommand}">
+            <TextBlock Text="Restart as administrator" FontSize="{StaticResource SlTextSmall}" />
+          </Button>
+        </Grid>
+      </Border>
+
+      <Border Grid.Row="4" Classes="callout info" Classes.danger="{Binding NoticeIsError}" Margin="0,0,0,12" IsVisible="{Binding HasNotice}">
+        <Grid ColumnDefinitions="*,Auto" ColumnSpacing="10">
+          <TextBlock Text="{Binding Notice}" TextWrapping="Wrap" FontSize="{StaticResource SlTextSmall}" />
+          <Button Grid.Column="1" Theme="{StaticResource IconButton}" VerticalAlignment="Top" Command="{Binding DismissNoticeCommand}"
+                  AutomationProperties.Name="Dismiss">
+            <ctl:Icon Width="14" Height="14" Data="{StaticResource IconClose}" />
+          </Button>
+        </Grid>
+      </Border>
+
+      <Border Grid.Row="5" Classes="callout warning" Margin="0,0,0,12" IsVisible="{Binding UpdatesFailed}">
+        <Grid ColumnDefinitions="Auto,*" ColumnSpacing="10">
+          <ctl:Icon Classes="status" Width="16" Height="16" VerticalAlignment="Top" Data="{StaticResource IconWarning}" />
+          <TextBlock Grid.Column="1" Text="{Binding UpdatesEmptyHint}" TextWrapping="Wrap" FontSize="{StaticResource SlTextSmall}" />
+        </Grid>
+      </Border>
+
+      <Grid Grid.Row="6" x:Name="Body" ColumnDefinitions="*,Auto">
+        <Border Classes="card" Padding="0" ClipToBounds="True">
+          <Panel>
+            <!-- ========== Devices ========== -->
+            <Grid RowDefinitions="Auto,*" IsVisible="{Binding IsDevicesTab}">
+              <Border Classes="table-header">
+                <Grid ColumnDefinitions="2*,120,*,150,96,Auto" ColumnSpacing="16">
+                  <ContentControl Content="{Binding DeviceNameColumn}" ContentTemplate="{StaticResource SortHeaderTemplate}" />
+                  <ContentControl Grid.Column="1" Content="{Binding DeviceStatusColumn}" ContentTemplate="{StaticResource SortHeaderTemplate}" />
+                  <ContentControl Grid.Column="2" Content="{Binding DeviceDriverColumn}" ContentTemplate="{StaticResource SortHeaderTemplate}" />
+                  <ContentControl Grid.Column="3" Content="{Binding DeviceVersionColumn}" ContentTemplate="{StaticResource SortHeaderTemplate}" />
+                  <ContentControl Grid.Column="4" Content="{Binding DeviceDateColumn}" ContentTemplate="{StaticResource SortHeaderTemplate}" />
+                  <TextBlock Grid.Column="5" Width="150" Text="Class" VerticalAlignment="Center" IsVisible="{Binding IsFlat}" />
+                </Grid>
+              </Border>
+
+              <ItemsControl Grid.Row="1" Theme="{StaticResource TableItems}" ItemsSource="{Binding DeviceItems}"
+                            Classes.grouped="{Binding IsGrouped}" AutomationProperties.Name="Devices">
+                <ItemsControl.DataTemplates>
+                  <DataTemplate DataType="drv:DeviceGroupRow" x:DataType="drv:DeviceGroupRow">
+                    <Border BorderBrush="{StaticResource SlBorder}" BorderThickness="0,0,0,1">
+                      <Button Theme="{StaticResource TableRow}" Padding="16,9" Command="{Binding ToggleCommand}"
+                              AutomationProperties.Name="{Binding AccessibleName}">
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                          <ctl:Icon Width="14" Height="14" VerticalAlignment="Center" Data="{Binding Glyph}"
+                                    Foreground="{StaticResource SlTextSecondary}" />
+                          <TextBlock Text="{Binding Name}" FontWeight="SemiBold" VerticalAlignment="Center" />
+                          <TextBlock Classes="caption" Text="{Binding CountText}" VerticalAlignment="Center" />
+                          <Border Classes="badge warning" Padding="4,0" VerticalAlignment="Center" IsVisible="{Binding HasProblems}">
+                            <TextBlock Text="Problems" FontSize="{StaticResource SlTextLabel}" />
+                          </Border>
+                        </StackPanel>
+                      </Button>
+                    </Border>
+                  </DataTemplate>
+
+                  <DataTemplate DataType="drv:DeviceRow" x:DataType="drv:DeviceRow">
+                    <Button Classes="entry" Theme="{StaticResource SelectableRow}" Classes.selected="{Binding IsSelected}"
+                            Command="{Binding SelectCommand}" AutomationProperties.Name="{Binding AccessibleName}">
+                      <Grid ColumnDefinitions="2*,120,*,150,96,Auto" ColumnSpacing="16">
+                        <TextBlock Classes="cell name" Text="{Binding Name}" ToolTip.Tip="{Binding ToolTip}" />
+                        <ContentControl Grid.Column="1" Content="{Binding Status}" ContentTemplate="{StaticResource BadgeTemplate}" />
+                        <Grid Grid.Column="2" ColumnDefinitions="Auto,*" VerticalAlignment="Center">
+                          <Border Classes="badge info" Padding="4,0" Margin="0,0,6,0" VerticalAlignment="Center" IsVisible="{Binding HasUpdate}">
+                            <TextBlock Text="Update" FontSize="{StaticResource SlTextLabel}" />
+                          </Border>
+                          <TextBlock Grid.Column="1" Classes="cell" Text="{Binding DriverText}" ToolTip.Tip="{Binding DriverText}" />
+                        </Grid>
+                        <TextBlock Grid.Column="3" Classes="cell" FontFamily="{StaticResource SlFontMono}" Text="{Binding VersionText}" />
+                        <TextBlock Grid.Column="4" Classes="cell" Text="{Binding DateText}" />
+                        <TextBlock Grid.Column="5" Classes="cell class" Width="150" Text="{Binding ClassText}" />
+                      </Grid>
+                    </Button>
+                  </DataTemplate>
+                </ItemsControl.DataTemplates>
+              </ItemsControl>
+
+              <StackPanel Grid.Row="1" Classes="empty" IsVisible="{Binding IsDevicesEmpty}">
+                <ctl:Icon Width="48" Height="48" HorizontalAlignment="Center" Foreground="{StaticResource SlTextSecondary}"
+                          Data="{StaticResource IconSearch}" />
+                <TextBlock Text="{Binding DevicesEmptyTitle}" HorizontalAlignment="Center" FontWeight="SemiBold" />
+                <TextBlock Classes="caption" Text="{Binding DevicesEmptyHint}" HorizontalAlignment="Center" />
+              </StackPanel>
+            </Grid>
+
+            <!-- ========== Kernel modules ========== -->
+            <Grid RowDefinitions="Auto,*" IsVisible="{Binding IsModulesTab}">
+              <Border Classes="table-header">
+                <Grid ColumnDefinitions="*,2*,2*,150" ColumnSpacing="16">
+                  <ContentControl Content="{Binding ModuleNameColumn}" ContentTemplate="{StaticResource SortHeaderTemplate}" />
+                  <ContentControl Grid.Column="1" Content="{Binding ModuleSignatureColumn}" ContentTemplate="{StaticResource SortHeaderTemplate}" />
+                  <ContentControl Grid.Column="2" Content="{Binding ModuleDescriptionColumn}" ContentTemplate="{StaticResource SortHeaderTemplate}" />
+                  <ContentControl Grid.Column="3" Content="{Binding ModuleVersionColumn}" ContentTemplate="{StaticResource SortHeaderTemplate}" />
+                </Grid>
+              </Border>
+
+              <ItemsControl Grid.Row="1" Theme="{StaticResource TableItems}" ItemsSource="{Binding ModuleItems}" AutomationProperties.Name="Kernel modules">
+                <ItemsControl.DataTemplates>
+                  <DataTemplate DataType="drv:ModuleRow" x:DataType="drv:ModuleRow">
+                    <Button Classes="entry" Theme="{StaticResource SelectableRow}" Classes.selected="{Binding IsSelected}"
+                            Command="{Binding SelectCommand}" AutomationProperties.Name="{Binding AccessibleName}">
+                      <Grid ColumnDefinitions="*,2*,2*,150" ColumnSpacing="16">
+                        <TextBlock Classes="cell name" FontFamily="{StaticResource SlFontMono}" Text="{Binding Name}" ToolTip.Tip="{Binding ToolTip}" />
+                        <Grid Grid.Column="1" ColumnDefinitions="Auto,*" VerticalAlignment="Center">
+                          <ContentControl Margin="0,0,6,0" Content="{Binding Look}" ContentTemplate="{StaticResource BadgeTemplate}" />
+                          <TextBlock Grid.Column="1" Classes="cell" Text="{Binding SignatureText}" ToolTip.Tip="{Binding SignatureText}" />
+                        </Grid>
+                        <TextBlock Grid.Column="2" Classes="cell" Text="{Binding DescriptionText}" ToolTip.Tip="{Binding DescriptionText}" />
+                        <TextBlock Grid.Column="3" Classes="cell" FontFamily="{StaticResource SlFontMono}" Text="{Binding VersionText}" />
+                      </Grid>
+                    </Button>
+                  </DataTemplate>
+                </ItemsControl.DataTemplates>
+              </ItemsControl>
+
+              <StackPanel Grid.Row="1" Classes="empty" IsVisible="{Binding IsModulesEmpty}">
+                <ctl:Icon Width="48" Height="48" HorizontalAlignment="Center" Foreground="{StaticResource SlTextSecondary}"
+                          Data="{StaticResource IconShield}" />
+                <TextBlock Text="{Binding ModulesEmptyTitle}" HorizontalAlignment="Center" FontWeight="SemiBold" />
+                <TextBlock Classes="caption" Text="{Binding ModulesEmptyHint}" HorizontalAlignment="Center" />
+              </StackPanel>
+            </Grid>
+
+            <!-- ========== Updates ========== -->
+            <Grid RowDefinitions="Auto,*" IsVisible="{Binding IsUpdatesTab}">
+              <Border Classes="table-header">
+                <Grid ColumnDefinitions="3*,2*,*,96,130" ColumnSpacing="16">
+                  <TextBlock Text="Update" VerticalAlignment="Center" />
+                  <TextBlock Grid.Column="1" Text="Device" VerticalAlignment="Center" />
+                  <TextBlock Grid.Column="2" Text="Provider" VerticalAlignment="Center" />
+                  <TextBlock Grid.Column="3" Text="Date" VerticalAlignment="Center" />
+                  <TextBlock Grid.Column="4" Text="Kind" VerticalAlignment="Center" />
+                </Grid>
+              </Border>
+
+              <ItemsControl Grid.Row="1" Theme="{StaticResource TableItems}" ItemsSource="{Binding UpdateItems}" AutomationProperties.Name="Driver updates">
+                <ItemsControl.DataTemplates>
+                  <DataTemplate DataType="drv:UpdateRow" x:DataType="drv:UpdateRow">
+                    <Button Classes="entry" Theme="{StaticResource SelectableRow}" Classes.selected="{Binding IsSelected}"
+                            Command="{Binding SelectCommand}" AutomationProperties.Name="{Binding AccessibleName}">
+                      <Grid ColumnDefinitions="3*,2*,*,96,130" ColumnSpacing="16">
+                        <TextBlock Classes="cell name" Text="{Binding Title}" ToolTip.Tip="{Binding Title}" />
+                        <TextBlock Grid.Column="1" Classes="cell" Text="{Binding DeviceText}" ToolTip.Tip="{Binding DeviceText}" />
+                        <TextBlock Grid.Column="2" Classes="cell" Text="{Binding ProviderText}" />
+                        <TextBlock Grid.Column="3" Classes="cell" Text="{Binding DateText}" />
+                        <ContentControl Grid.Column="4" Content="{Binding Status}" ContentTemplate="{StaticResource BadgeTemplate}" />
+                      </Grid>
+                    </Button>
+                  </DataTemplate>
+                </ItemsControl.DataTemplates>
+              </ItemsControl>
+
+              <StackPanel Grid.Row="1" Classes="empty" IsVisible="{Binding IsUpdatesEmpty}">
+                <ctl:Icon Width="48" Height="48" HorizontalAlignment="Center" Foreground="{StaticResource SlTextSecondary}"
+                          Data="{StaticResource IconDownload}" />
+                <TextBlock Text="{Binding UpdatesEmptyTitle}" HorizontalAlignment="Center" FontWeight="SemiBold" />
+                <TextBlock Classes="caption" Text="{Binding UpdatesEmptyHint}" HorizontalAlignment="Center" TextWrapping="Wrap" MaxWidth="420" TextAlignment="Center" />
+              </StackPanel>
+            </Grid>
+
+            <!-- ========== Changes ========== -->
+            <Grid RowDefinitions="Auto,*" IsVisible="{Binding IsChangesTab}">
+              <Border Classes="table-header">
+                <Grid ColumnDefinitions="150,140,2*,3*" ColumnSpacing="16">
+                  <TextBlock Text="When" VerticalAlignment="Center" />
+                  <TextBlock Grid.Column="1" Text="What" VerticalAlignment="Center" />
+                  <TextBlock Grid.Column="2" Text="Device or driver" VerticalAlignment="Center" />
+                  <TextBlock Grid.Column="3" Text="Details" VerticalAlignment="Center" />
+                </Grid>
+              </Border>
+
+              <ItemsControl Grid.Row="1" Theme="{StaticResource TableItems}" ItemsSource="{Binding ChangeItems}" AutomationProperties.Name="Changes">
+                <ItemsControl.DataTemplates>
+                  <DataTemplate DataType="drv:ChangeRow" x:DataType="drv:ChangeRow">
+                    <Button Classes="entry" Theme="{StaticResource SelectableRow}" Classes.selected="{Binding IsSelected}"
+                            Command="{Binding SelectCommand}" AutomationProperties.Name="{Binding AccessibleName}">
+                      <Grid ColumnDefinitions="150,140,2*,3*" ColumnSpacing="16">
+                        <TextBlock Classes="cell" Text="{Binding TimeText}" />
+                        <ContentControl Grid.Column="1" Content="{Binding Kind}" ContentTemplate="{StaticResource BadgeTemplate}" />
+                        <TextBlock Grid.Column="2" Classes="cell name" Text="{Binding Subject}" ToolTip.Tip="{Binding Subject}" />
+                        <TextBlock Grid.Column="3" Classes="cell" Text="{Binding Detail}" ToolTip.Tip="{Binding Detail}" />
+                      </Grid>
+                    </Button>
+                  </DataTemplate>
+                </ItemsControl.DataTemplates>
+              </ItemsControl>
+
+              <StackPanel Grid.Row="1" Classes="empty" IsVisible="{Binding IsChangesEmpty}">
+                <ctl:Icon Width="48" Height="48" HorizontalAlignment="Center" Foreground="{StaticResource SlTextSecondary}"
+                          Data="{StaticResource IconClock}" />
+                <TextBlock Text="{Binding ChangesEmptyTitle}" HorizontalAlignment="Center" FontWeight="SemiBold" />
+                <TextBlock Classes="caption" Text="{Binding ChangesEmptyHint}" HorizontalAlignment="Center" />
+              </StackPanel>
+            </Grid>
+
+            <!-- ========== Crashes ========== -->
+            <Grid RowDefinitions="Auto,*" IsVisible="{Binding IsCrashesTab}">
+              <Border Classes="table-header">
+                <Grid ColumnDefinitions="150,170,*,2*" ColumnSpacing="16">
+                  <TextBlock Text="When" VerticalAlignment="Center" />
+                  <TextBlock Grid.Column="1" Text="What" VerticalAlignment="Center" />
+                  <TextBlock Grid.Column="2" Text="Driver" VerticalAlignment="Center" />
+                  <TextBlock Grid.Column="3" Text="Stop code" VerticalAlignment="Center" />
+                </Grid>
+              </Border>
+
+              <ItemsControl Grid.Row="1" Theme="{StaticResource TableItems}" ItemsSource="{Binding CrashItems}" AutomationProperties.Name="Crashes">
+                <ItemsControl.DataTemplates>
+                  <DataTemplate DataType="drv:CrashRow" x:DataType="drv:CrashRow">
+                    <Button Classes="entry" Theme="{StaticResource SelectableRow}" Classes.selected="{Binding IsSelected}"
+                            Command="{Binding SelectCommand}" AutomationProperties.Name="{Binding AccessibleName}">
+                      <Grid ColumnDefinitions="150,170,*,2*" ColumnSpacing="16">
+                        <TextBlock Classes="cell" Text="{Binding TimeText}" />
+                        <ContentControl Grid.Column="1" Content="{Binding Kind}" ContentTemplate="{StaticResource BadgeTemplate}" />
+                        <TextBlock Grid.Column="2" Classes="cell name" FontFamily="{StaticResource SlFontMono}" Text="{Binding DriverName}" />
+                        <TextBlock Grid.Column="3" Classes="cell" FontFamily="{StaticResource SlFontMono}" Text="{Binding CodeText}" ToolTip.Tip="{Binding CodeText}" />
+                      </Grid>
+                    </Button>
+                  </DataTemplate>
+                </ItemsControl.DataTemplates>
+              </ItemsControl>
+
+              <StackPanel Grid.Row="1" Classes="empty" IsVisible="{Binding IsCrashesEmpty}">
+                <ctl:Icon Width="48" Height="48" HorizontalAlignment="Center" Foreground="{StaticResource SlSuccess}"
+                          Data="{StaticResource IconShield}" />
+                <TextBlock Text="{Binding CrashesEmptyTitle}" HorizontalAlignment="Center" FontWeight="SemiBold" />
+                <TextBlock Classes="caption" Text="{Binding CrashesEmptyHint}" HorizontalAlignment="Center" TextWrapping="Wrap" MaxWidth="420" TextAlignment="Center" />
+              </StackPanel>
+            </Grid>
+          </Panel>
+        </Border>
+
+        <ContentControl Grid.Column="1" x:Name="DetailsPane" Width="420" Margin="16,0,0,0"
+                        Content="{Binding Details}" ContentTemplate="{StaticResource DetailsTemplate}"
+                        IsVisible="{Binding HasDetails}" />
+      </Grid>
+    </Grid>
+
+    <!-- ========== Confirmation (components.md → Dialogs) ========== -->
+    <Border Background="{StaticResource SlScrim}" IsVisible="{Binding HasConfirmation}">
+      <Border Classes="dialog" Width="480" HorizontalAlignment="Center" VerticalAlignment="Center">
+        <StackPanel Spacing="16">
+          <ctl:CapsText Classes="dialog-title" Value="{Binding Confirmation.Title}" TextWrapping="Wrap" />
+          <TextBlock Text="{Binding Confirmation.Message}" TextWrapping="Wrap" />
+          <Border Classes="callout warning" IsVisible="{Binding Confirmation.HasWarning}">
+            <Grid ColumnDefinitions="Auto,*" ColumnSpacing="8">
+              <ctl:Icon Classes="status" Width="16" Height="16" VerticalAlignment="Top" Data="{StaticResource IconWarning}" />
+              <TextBlock Grid.Column="1" Text="{Binding Confirmation.Warning}" TextWrapping="Wrap" FontSize="{StaticResource SlTextSmall}" />
+            </Grid>
+          </Border>
+          <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Right">
+            <Button x:Name="ConfirmCancel" Theme="{StaticResource SoftButton}" Command="{Binding Confirmation.CancelCommand}"
+                    Content="Cancel" IsCancel="True" />
+            <Button Theme="{StaticResource SoftButton}" Command="{Binding Confirmation.ConfirmCommand}">
+              <StackPanel Orientation="Horizontal" Spacing="6">
+                <ctl:Icon Width="14" Height="14" Data="{Binding ConfirmIcon}" />
+                <TextBlock Text="{Binding Confirmation.ConfirmText}" VerticalAlignment="Center" />
+              </StackPanel>
+            </Button>
+          </StackPanel>
+        </StackPanel>
+      </Border>
+    </Border>
+  </Panel>
+</UserControl>

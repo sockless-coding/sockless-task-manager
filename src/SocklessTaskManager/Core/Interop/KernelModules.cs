@@ -1,8 +1,7 @@
 using System.Buffers.Binary;
 using System.Text;
-using Sockless.TaskManager.Core.Interop;
 
-namespace Sockless.TaskManager.Features.Memory;
+namespace Sockless.TaskManager.Core.Interop;
 
 /// <summary>A loaded driver (or the kernel itself) and the size of its image.</summary>
 internal readonly record struct KernelModule(string Name, string Path, ulong ImageBytes);

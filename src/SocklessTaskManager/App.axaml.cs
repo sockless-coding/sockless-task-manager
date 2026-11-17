@@ -4,6 +4,7 @@ using Avalonia.Markup.Xaml;
 using Sockless.TaskManager.Core;
 using Sockless.TaskManager.Features.Apps;
 using Sockless.TaskManager.Features.Autostart;
+using Sockless.TaskManager.Features.Drivers;
 using Sockless.TaskManager.Features.Memory;
 using Sockless.TaskManager.Features.Network;
 using Sockless.TaskManager.Features.Performance;
@@ -38,6 +39,7 @@ public sealed class App : Application
                 new NetworkFeature(clock, navigator),
                 new UsersFeature(clock, navigator),
                 new ServicesFeature(clock, navigator),
+                new DriversFeature(),
                 new AutostartFeature(),
                 new AppsFeature(navigator),
             ];

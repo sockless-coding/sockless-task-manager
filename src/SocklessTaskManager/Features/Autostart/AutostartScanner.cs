@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using Sockless.TaskManager.Core.Interop;
 
 namespace Sockless.TaskManager.Features.Autostart;
 

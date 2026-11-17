@@ -1,4 +1,5 @@
 using Avalonia.Threading;
+using Sockless.TaskManager.Core.Interop;
 
 namespace Sockless.TaskManager.Features.Memory;
 

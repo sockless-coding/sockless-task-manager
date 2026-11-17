@@ -1,11 +1,12 @@
 using System.Runtime.InteropServices;
 using Microsoft.Win32.SafeHandles;
 
-namespace Sockless.TaskManager.Features.Autostart;
+namespace Sockless.TaskManager.Core.Interop;
 
 /// <summary>
 /// Checks Authenticode signatures with WinVerifyTrust: the file's own signature, else a Windows
-/// catalog that lists its hash (how most of Windows' own files are signed). No revocation checks
+/// catalog that lists its hash (how most of Windows' own files are signed). Shared by Autostart and
+/// Drivers. No revocation checks
 /// and no downloads, so it never goes online. One instance per scan thread; not thread-safe.
 /// </summary>
 internal sealed unsafe partial class SignatureChecker : IDisposable
@@ -294,4 +295,32 @@ internal sealed unsafe partial class SignatureChecker : IDisposable
 
     [LibraryImport("crypt32.dll")]
     private static partial uint CertGetNameStringW(nint context, uint type, uint flags, nint typePara, char* name, uint size);
+}
+
+internal enum SignatureState
+{
+    /// <summary>Not verified yet: the list shows before every file is checked.</summary>
+    Pending,
+    Signed,
+    Unsigned,
+
+    /// <summary>A signature that doesn't verify: a changed file, a distrusted or revoked certificate.</summary>
+    Invalid,
+
+    /// <summary>No file to check.</summary>
+    None,
+
+    /// <summary>The file is there but can't be opened to check (in use exclusively, or denied).</summary>
+    Unreadable,
+}
+
+/// <param name="Signer">The certificate's subject, when signed.</param>
+/// <param name="ByCatalog">Signed through a Windows catalog rather than in the file itself.</param>
+internal sealed record Signature(SignatureState State, string? Signer = null, bool ByCatalog = false)
+{
+    /// <summary>Signed as part of an app package (Autostart: a packaged app's files are signed by its package).</summary>
+    public bool ByPackage { get; init; }
+
+    public static readonly Signature Pending = new(SignatureState.Pending);
+    public static readonly Signature None = new(SignatureState.None);
 }

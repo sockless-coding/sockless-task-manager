@@ -1,3 +1,5 @@
+using Sockless.TaskManager.Core.Interop;
+
 namespace Sockless.TaskManager.Features.Autostart;
 
 /// <summary>How entries read on the page, and the judgements behind the filters: Windows' own, and worth a look.</summary>

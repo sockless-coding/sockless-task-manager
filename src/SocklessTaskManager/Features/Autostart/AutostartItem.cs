@@ -1,4 +1,5 @@
 using Microsoft.Win32;
+using Sockless.TaskManager.Core.Interop;
 
 namespace Sockless.TaskManager.Features.Autostart;
 
@@ -147,31 +148,3 @@ internal sealed record AutostartFile(
     string? Version,
     DateTime? Modified,
     Signature Signature);
-
-internal enum SignatureState
-{
-    /// <summary>Not verified yet: the list shows before every file is checked.</summary>
-    Pending,
-    Signed,
-    Unsigned,
-
-    /// <summary>A signature that doesn't verify: a changed file, a distrusted or revoked certificate.</summary>
-    Invalid,
-
-    /// <summary>No file to check.</summary>
-    None,
-
-    /// <summary>The file is there but can't be opened to check (in use exclusively, or denied).</summary>
-    Unreadable,
-}
-
-/// <param name="Signer">The certificate's subject, when signed.</param>
-/// <param name="ByCatalog">Signed through a Windows catalog rather than in the file itself.</param>
-internal sealed record Signature(SignatureState State, string? Signer = null, bool ByCatalog = false)
-{
-    /// <summary>Signed as part of an app package (see <see cref="AutostartItem.PackageSigner"/>).</summary>
-    public bool ByPackage { get; init; }
-
-    public static readonly Signature Pending = new(SignatureState.Pending);
-    public static readonly Signature None = new(SignatureState.None);
-}

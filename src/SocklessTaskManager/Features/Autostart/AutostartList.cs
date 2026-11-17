@@ -5,6 +5,7 @@ using System.Windows.Input;
 using Avalonia.Media;
 using Avalonia.Threading;
 using Sockless.TaskManager.Core;
+using Sockless.TaskManager.Core.Interop;
 
 namespace Sockless.TaskManager.Features.Autostart;
 
