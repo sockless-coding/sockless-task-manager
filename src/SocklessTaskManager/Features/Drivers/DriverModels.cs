@@ -35,12 +35,16 @@ internal sealed record DriverFile(string Path, bool Exists, string? Company, str
     public bool NeedsLook => !Exists || Signature.State is SignatureState.Unsigned or SignatureState.Invalid;
 }
 
+/// <param name="Origins">Where each device's driver (by instance id) and each module (by path) came from; empty until read.</param>
+/// <param name="Tools">Vendors' update tools on this computer.</param>
 /// <param name="IsChecking">Signatures are still being verified; another snapshot follows.</param>
 internal sealed record DriverSnapshot(
     IReadOnlyList<DeviceInfo> Devices,
     IReadOnlyList<LoadedModule> Modules,
     IReadOnlyDictionary<string, DriverService> Services,
     IReadOnlyDictionary<string, DriverFile> Files,
+    IReadOnlyDictionary<string, DriverOrigin> Origins,
+    IReadOnlyList<VendorTool> Tools,
     bool IsChecking);
 
 /// <summary>A driver update Windows Update offers.</summary>

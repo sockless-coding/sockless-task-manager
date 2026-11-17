@@ -14,36 +14,17 @@ namespace Sockless.TaskManager.Features.Apps;
 /// </summary>
 internal static class InstalledPrograms
 {
-    private const string UninstallPath = @"Software\Microsoft\Windows\CurrentVersion\Uninstall";
-    private const string Uninstall32Path = @"Software\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall";
-
     private static readonly string WindowsFolder = Path.TrimEndingDirectorySeparator(Environment.GetFolderPath(Environment.SpecialFolder.Windows));
 
-    private static readonly (RegistryHive Hive, string Path, string? Architecture)[] Lists =
-    [
-        (RegistryHive.LocalMachine, UninstallPath, "64-bit"),
-        (RegistryHive.LocalMachine, Uninstall32Path, "32-bit"),
-        (RegistryHive.CurrentUser, UninstallPath, null),
-        (RegistryHive.CurrentUser, Uninstall32Path, "32-bit"),
-    ];
-
     /// <summary>The keys the list is read from, for the watcher.</summary>
-    public static IEnumerable<(RegistryHive Hive, string Path)> Keys => Lists.Select(l => (l.Hive, l.Path));
+    public static IEnumerable<(RegistryHive Hive, string Path)> Keys => UninstallRegistry.Lists.Select(l => (l.Hive, l.Path));
 
     public static IEnumerable<AppItem> Scan()
     {
-        foreach (var (hive, path, architecture) in Lists)
+        foreach (var (hive, path, name, key, architecture) in UninstallRegistry.Entries())
         {
-            using var list = AppRegistry.Open(hive, path);
-            if (list is null)
-                continue;
-
-            foreach (var name in AppRegistry.SubKeyNames(list))
-            {
-                using var key = AppRegistry.OpenSubKey(list, name);
-                if (key is not null && Read(hive, path, name, key, architecture) is { } item)
-                    yield return item;
-            }
+            if (Read(hive, path, name, key, architecture) is { } item)
+                yield return item;
         }
     }
 

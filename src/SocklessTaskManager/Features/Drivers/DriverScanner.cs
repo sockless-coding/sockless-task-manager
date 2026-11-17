@@ -14,6 +14,7 @@ internal sealed class DriverScanner
     private static readonly TimeSpan PublishEvery = TimeSpan.FromSeconds(1.5);
 
     private readonly Dictionary<string, (long Length, DateTime Modified, Signature Signature)> _signatures = new(StringComparer.OrdinalIgnoreCase);
+    private readonly DriverOrigins _origins = new();
     private byte[] _moduleBuffer = NtSystem.Buffer(64 * 1024);
 
     public void Scan(Action<DriverSnapshot> publish)
@@ -37,14 +38,47 @@ internal sealed class DriverScanner
         foreach (var path in paths)
             files[path] = Read(path);
 
-        DriverSnapshot Build(bool checking) => new(
-            devices,
-            [.. loaded.Select(m => new LoadedModule(m.Name, m.Path, m.ImageBytes, byImage.GetValueOrDefault(m.Path), files[m.Path]))],
-            services,
-            new Dictionary<string, DriverFile>(files, StringComparer.OrdinalIgnoreCase),
-            checking);
+        OriginIndex? origins = null;
+        var deviceOrigins = new Dictionary<string, DriverOrigin>(StringComparer.OrdinalIgnoreCase);
+
+        DriverSnapshot Build(bool checking)
+        {
+            var modules = loaded.Select(m => new LoadedModule(m.Name, m.Path, m.ImageBytes, byImage.GetValueOrDefault(m.Path), files[m.Path])).ToList();
+            var all = new Dictionary<string, DriverOrigin>(deviceOrigins, StringComparer.OrdinalIgnoreCase);
+            if (origins is not null)
+            {
+                // A module's origin follows its file's signature (Windows' own or not), so it's worked out each time.
+                foreach (var module in modules)
+                {
+                    var device = module.Service is { } service ? devices.FirstOrDefault(d => d.IsPresent && string.Equals(d.Service, service.Name, StringComparison.OrdinalIgnoreCase)) : null;
+                    var deviceOrigin = device is null ? null : deviceOrigins.GetValueOrDefault(device.InstanceId);
+                    if (origins.Resolve(module, device, deviceOrigin) is { } origin)
+                        all.TryAdd(module.Path, origin);
+                }
+            }
+
+            return new DriverSnapshot(devices, modules, services, new Dictionary<string, DriverFile>(files, StringComparer.OrdinalIgnoreCase),
+                all, origins?.Tools ?? [], checking);
+        }
 
         var pending = files.Values.Where(f => f.Signature.State == SignatureState.Pending).Select(f => f.Path).ToList();
+        publish(Build(true));
+
+        // Where drivers came from: the setup logs, and Windows Update's history for drivers older than them.
+        try
+        {
+            origins = _origins.Read(needsHistory: devices.Any(d => d.IsThirdParty));
+            foreach (var device in devices)
+            {
+                if (origins.Resolve(device) is { } origin)
+                    deviceOrigins[device.InstanceId] = origin;
+            }
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"Reading driver origins failed: {ex}");
+        }
+
         publish(Build(pending.Count > 0));
         if (pending.Count == 0)
             return;

@@ -53,6 +53,79 @@ internal static unsafe class WindowsUpdate
     }
 
     /// <summary>
+    /// Driver updates Windows Update installed, from its own history (local; nothing goes online):
+    /// when, and the title, which ends with the driver's version ("NVIDIA Display Driver Update (32.0.16.1088)").
+    /// </summary>
+    public static List<(DateTime Time, string Title)> History()
+    {
+        var installed = new List<(DateTime, string)>();
+        WithSession(session =>
+        {
+            nint searcher;
+            var hr = ((delegate* unmanaged<nint, nint*, int>)(*(nint**)session)[12])(session, &searcher);
+            if (hr < 0)
+                return hr;
+
+            try
+            {
+                // IUpdateSearcher: QueryHistory 18, GetTotalHistoryCount 22.
+                int total;
+                if (Call(searcher, 22, &total) < 0 || total <= 0)
+                    return 0;
+
+                nint entries;
+                hr = ((delegate* unmanaged<nint, int, int, nint*, int>)(*(nint**)searcher)[18])(searcher, 0, Math.Min(total, 2000), &entries);
+                if (hr < 0)
+                    return hr;
+
+                try
+                {
+                    // IUpdateHistoryEntryCollection: get_Item 7, get_Count 9.
+                    int count;
+                    if (Call(entries, 9, &count) < 0)
+                        return 0;
+
+                    var getItem = (delegate* unmanaged<nint, int, nint*, int>)(*(nint**)entries)[7];
+                    for (var i = 0; i < count; i++)
+                    {
+                        nint entry;
+                        if (getItem(entries, i, &entry) < 0 || entry == 0)
+                            continue;
+
+                        try
+                        {
+                            // IUpdateHistoryEntry: get_Operation 7 (1 = install), get_ResultCode 8, get_Date 10, get_Title 12.
+                            int operation = 0, code = 0;
+                            double date = 0;
+                            Call(entry, 7, &operation);
+                            Call(entry, 8, &code);
+                            Call(entry, 10, &date);
+                            if (operation == 1 && code is Succeeded or SucceededWithErrors && Text(entry, 12) is { } title && date > 0)
+                                installed.Add((DateTime.SpecifyKind(DateTime.FromOADate(date), DateTimeKind.Utc), title));
+                        }
+                        finally
+                        {
+                            Com.Release(entry);
+                        }
+                    }
+
+                    return 0;
+                }
+                finally
+                {
+                    Com.Release(entries);
+                }
+            }
+            finally
+            {
+                Com.Release(searcher);
+            }
+        });
+
+        return installed;
+    }
+
+    /// <summary>
     /// Downloads and installs one update, found again by its id. <paramref name="progress"/> hears each
     /// step. Returns why it failed (null on success) and whether a restart finishes it.
     /// </summary>

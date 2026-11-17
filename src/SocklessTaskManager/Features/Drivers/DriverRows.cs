@@ -29,6 +29,24 @@ internal enum DriverSortKey
     Date,
     Signature,
     Description,
+    Source,
+}
+
+/// <summary>A button that opens a vendor's update tool: "Open NVIDIA App".</summary>
+public sealed class ToolLink
+{
+    internal ToolLink(string name, Action open)
+    {
+        Name = name;
+        Text = $"Open {name}";
+        OpenCommand = new RelayCommand(open);
+    }
+
+    public string Name { get; }
+
+    public string Text { get; }
+
+    public ICommand OpenCommand { get; }
 }
 
 /// <summary>A sortable column title.</summary>
@@ -158,11 +176,13 @@ public sealed class DeviceGroupRow : ObservableObject
 
 public sealed class DeviceRow : DriverRow
 {
-    internal DeviceRow(DeviceInfo device, Badge status, string driver, DriverUpdate? update, Action<DriverRow> select)
+    internal DeviceRow(DeviceInfo device, Badge status, string driver, DriverOrigin? origin, DriverUpdate? update, Action<DriverRow> select)
         : base(device.InstanceId, select)
     {
         Device = device;
+        Origin = origin;
         Update = update;
+        SourceText = origin?.Title ?? (device.HasDriver ? "—" : "No driver");
         Name = device.Name;
         Status = status;
         DriverText = driver;
@@ -176,9 +196,14 @@ public sealed class DeviceRow : DriverRow
 
     internal DriverUpdate? Update { get; }
 
+    internal DriverOrigin? Origin { get; }
+
     public string Name { get; }
 
     public Badge Status { get; }
+
+    /// <summary>Where the driver came from: "Windows", "Windows Update", "NVIDIA Graphics Driver 610.88".</summary>
+    public string SourceText { get; }
 
     /// <summary>Who provides the driver: "NVIDIA", "Microsoft (Windows)", or "No driver".</summary>
     public string DriverText { get; }
@@ -198,10 +223,12 @@ public sealed class DeviceRow : DriverRow
 
 public sealed class ModuleRow : DriverRow
 {
-    internal ModuleRow(LoadedModule module, Action<DriverRow> select)
+    internal ModuleRow(LoadedModule module, DriverOrigin? origin, Action<DriverRow> select)
         : base(module.Path, select)
     {
         Module = module;
+        Origin = origin;
+        SourceText = origin?.Title ?? "—";
         Name = module.Name;
         var file = module.File;
         Look = Drivers.DriverText.Look(file) is { Length: > 0 } look ? new Badge(look, BadgeKind.Warning) : Badge.None;
@@ -216,6 +243,10 @@ public sealed class ModuleRow : DriverRow
     }
 
     internal LoadedModule Module { get; }
+
+    internal DriverOrigin? Origin { get; }
+
+    public string SourceText { get; }
 
     public string Name { get; }
 
@@ -352,6 +383,7 @@ public sealed class DriverDetails : ObservableObject
     private string _lookTitle = string.Empty;
     private string _lookText = string.Empty;
     private IReadOnlyList<DriverFactGroup> _groups = [];
+    private IReadOnlyList<ToolLink> _tools = [];
     private bool _canInstallUpdate;
     private bool _showInstallUpdate;
     private bool _canUpdateFromFile;
@@ -456,6 +488,19 @@ public sealed class DriverDetails : ObservableObject
         get => _groups;
         set => Set(ref _groups, value);
     }
+
+    /// <summary>Vendors' update tools that look after this driver.</summary>
+    public IReadOnlyList<ToolLink> Tools
+    {
+        get => _tools;
+        set
+        {
+            if (Set(ref _tools, value))
+                OnPropertyChanged(nameof(HasTools));
+        }
+    }
+
+    public bool HasTools => _tools.Count > 0;
 
     public bool CanInstallUpdate
     {

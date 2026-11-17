@@ -106,6 +106,13 @@ src/SocklessTaskManager/
                         Changes: the Kernel-PnP configuration log and the System log (EventLog.cs, wevtapi, events
                         rendered as XML and read by hand to keep System.Xml out), plus DriverMonitor, which follows
                         CM_Register_Notification from app start and diffs only the devices that changed.
+                        Sources (DriverOrigins, local only): where each driver came from, from the setup log
+                        (SetupLog: which INF each oemNN.inf was published from, by Windows Update, an installer
+                        or a Store app), Windows Update's history for drivers older than the log, and the
+                        uninstall registry (Core/UninstallRegistry: the program whose folder the INF was in, a
+                        vendor's per-driver entry with the same version, NVIDIA's package by its release
+                        number). Vendors' update tools (NVIDIA App, Intel DSA, AMD Software, computer makers')
+                        are found by Start menu shortcut and offered for the drivers they look after.
                         Crashes (CrashHistory): stop errors, unexpected restarts, display driver resets and live
                         kernel events from the System and Application logs, with the driver blamed by WER's bucket
                         or, elevated, by the dump (KernelDump: header by offset, then a minidump's driver list and
@@ -114,6 +121,7 @@ src/SocklessTaskManager/
                         - The dump stack loads storage drivers as dump_<name>.sys; the file is <name>.sys.
                         - Drivers that passed Microsoft's hardware program are signed "Microsoft Windows Hardware
                           Compatibility Publisher": not Windows' own.
+                        - oemNN.inf names are reused after a package is removed: the latest publication wins.
                         - Nothing runs per tick: scans on first show, Refresh and device changes; Windows Update is
                           asked on first show and "Check again".
     Autostart/          a top-level feature: everything Windows starts or loads on its own, as Autoruns lists it.
@@ -169,7 +177,7 @@ src/SocklessTaskManager/
 
 A slice owns everything it needs: native calls, sensor, view model and view. Slices don't reference each other. Code moves into `Core/` only when a second slice needs it (PDH, `GetPerformanceInfo` and `NtQuerySystemInformation` with its process-list parser are there for that reason, as are `Accounts` (process token owners), `Elevation` and `Confirmation`, shared by Processes and Users, `AddressSpace`, shared by Processes and Memory, `EtwSession` (a real-time ETW session) with the kernel's process-start event, shared by Processes and Network, and `Privileges` (enable a token privilege), shared by Storage and Services, `CommandLine` (the program in a
 registered command line), shared by Services, Autostart and Apps, `Com` (COM by vtable) and `SignatureChecker`, shared by
-Autostart and Drivers, `KernelModules`, shared by Memory and Drivers, and `Backups` (.reg exports and the backups folders,
+Autostart and Drivers, `KernelModules`, shared by Memory and Drivers, `UninstallRegistry`, shared by Apps and Drivers, and `Backups` (.reg exports and the backups folders,
 opening Registry Editor at a key), shared by Autostart and Apps).
 
 When one slice needs to show another's page, it goes through `Core/Navigator.cs`: Users and Memory call `ShowProcesses(new ProcessQuery(...))`, the Processes feature applies it and calls `Open(this)`, and the shell selects it. Pages may list processes in their own terms (shares of memory, a user's processes), but a process's details, actions and drill-downs live only on the Processes page: a row elsewhere opens it there rather than growing details of its own. If a page needs more than `ProcessQuery` offers, add it there.

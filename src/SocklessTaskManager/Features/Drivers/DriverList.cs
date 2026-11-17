@@ -33,6 +33,10 @@ public sealed class DriverList : ObservableObject
     private const int ModulesThirdParty = 1;
     private const int ModulesLook = 2;
 
+    private const int ByClass = 0;
+    private const int BySource = 1;
+    private const int Flat = 2;
+
     private const int ChangesAll = 0;
     private const int ChangesProblems = 1;
     private const int ChangesLive = 2;
@@ -62,7 +66,8 @@ public sealed class DriverList : ObservableObject
     private int _deviceShow = DevicesConnected;
     private int _moduleShow = ModulesAll;
     private int _changeShow = ChangesAll;
-    private bool _isGrouped = true;
+    private int _layout = ByClass;
+    private IReadOnlyList<ToolLink> _tools = [];
     private string _searchText = string.Empty;
     private DriverColumn _deviceSort;
     private DriverColumn _moduleSort;
@@ -92,6 +97,7 @@ public sealed class DriverList : ObservableObject
         DeviceNameColumn = new DriverColumn("Device", DriverSortKey.Name, SortDevices);
         DeviceStatusColumn = new DriverColumn("Status", DriverSortKey.Status, SortDevices);
         DeviceDriverColumn = new DriverColumn("Driver", DriverSortKey.Driver, SortDevices);
+        DeviceSourceColumn = new DriverColumn("Source", DriverSortKey.Source, SortDevices);
         DeviceVersionColumn = new DriverColumn("Version", DriverSortKey.Version, SortDevices);
         DeviceDateColumn = new DriverColumn("Date", DriverSortKey.Date, SortDevices);
         _deviceSort = DeviceNameColumn;
@@ -100,6 +106,7 @@ public sealed class DriverList : ObservableObject
         ModuleNameColumn = new DriverColumn("Module", DriverSortKey.Name, SortModules);
         ModuleSignatureColumn = new DriverColumn("Signed by", DriverSortKey.Signature, SortModules);
         ModuleDescriptionColumn = new DriverColumn("Driver", DriverSortKey.Description, SortModules);
+        ModuleSourceColumn = new DriverColumn("Source", DriverSortKey.Source, SortModules);
         ModuleVersionColumn = new DriverColumn("Version", DriverSortKey.Version, SortModules);
         _moduleSort = ModuleNameColumn;
         ModuleNameColumn.IsActive = true;
@@ -150,6 +157,8 @@ public sealed class DriverList : ObservableObject
 
     public DriverColumn DeviceDriverColumn { get; }
 
+    public DriverColumn DeviceSourceColumn { get; }
+
     public DriverColumn DeviceVersionColumn { get; }
 
     public DriverColumn DeviceDateColumn { get; }
@@ -159,6 +168,8 @@ public sealed class DriverList : ObservableObject
     public DriverColumn ModuleSignatureColumn { get; }
 
     public DriverColumn ModuleDescriptionColumn { get; }
+
+    public DriverColumn ModuleSourceColumn { get; }
 
     public DriverColumn ModuleVersionColumn { get; }
 
@@ -277,24 +288,44 @@ public sealed class DriverList : ObservableObject
         set => SetChangeShow(value, ChangesLive);
     }
 
-    public bool IsGrouped
+    /// <summary>Devices under headings (their class or their driver's source), rather than one list.</summary>
+    public bool IsGrouped => _layout != Flat;
+
+    public bool IsByClass
     {
-        get => _isGrouped;
-        set
-        {
-            if (Set(ref _isGrouped, value))
-            {
-                OnPropertyChanged(nameof(IsFlat));
-                RenderDevices();
-            }
-        }
+        get => _layout == ByClass;
+        set => SetLayout(value, ByClass);
+    }
+
+    public bool IsBySource
+    {
+        get => _layout == BySource;
+        set => SetLayout(value, BySource);
     }
 
     public bool IsFlat
     {
-        get => !_isGrouped;
-        set => IsGrouped = !value;
+        get => _layout == Flat;
+        set => SetLayout(value, Flat);
     }
+
+    /// <summary>Vendors' update tools on this computer (NVIDIA App, Intel Driver &amp; Support Assistant…).</summary>
+    public IReadOnlyList<ToolLink> Tools
+    {
+        get => _tools;
+        private set
+        {
+            if (Set(ref _tools, value))
+            {
+                OnPropertyChanged(nameof(HasTools));
+                OnPropertyChanged(nameof(ShowToolsHint));
+            }
+        }
+    }
+
+    public bool HasTools => _tools.Count > 0;
+
+    public bool ShowToolsHint => _tab == TabUpdates && _tools.Count > 0;
 
     public string SearchText
     {
@@ -643,7 +674,9 @@ public sealed class DriverList : ObservableObject
         }
 
         BuildDeviceRows();
-        _moduleRows = [.. snapshot.Modules.Select(m => new ModuleRow(m, Select))];
+        _moduleRows = [.. snapshot.Modules.Select(m => new ModuleRow(m, snapshot.Origins.GetValueOrDefault(m.Path), Select))];
+        if (!snapshot.Tools.Select(t => t.Name).SequenceEqual(_tools.Select(t => t.Name)))
+            Tools = [.. snapshot.Tools.Select(t => new ToolLink(t.Name, () => OpenTool(t)))];
         BuildUpdateRows();
         BuildChangeRows();
         Render();
@@ -667,7 +700,7 @@ public sealed class DriverList : ObservableObject
         if (_snapshot is not { } snapshot)
             return;
 
-        _deviceRows = [.. snapshot.Devices.Select(d => new DeviceRow(d, DeviceStatus(d), DeviceDriver(d), UpdateFor(d), Select))];
+        _deviceRows = [.. snapshot.Devices.Select(d => new DeviceRow(d, DeviceStatus(d), DeviceDriver(d), snapshot.Origins.GetValueOrDefault(d.InstanceId), UpdateFor(d), Select))];
     }
 
     private void BuildUpdateRows() =>
@@ -747,12 +780,17 @@ public sealed class DriverList : ObservableObject
         shown.Sort(CompareDevices);
 
         var wanted = new List<object>(shown.Count + 40);
-        if (_isGrouped)
+        if (_layout != Flat)
         {
             var searching = HasSearch;
             var present = new HashSet<string>(StringComparer.CurrentCultureIgnoreCase);
-            foreach (var group in shown.GroupBy(r => r.Device.ClassTitle, StringComparer.CurrentCultureIgnoreCase)
-                         .OrderBy(g => g.Key, StringComparer.CurrentCultureIgnoreCase))
+            var groups = _layout == BySource
+                ? shown.GroupBy(SourceGroup, StringComparer.CurrentCultureIgnoreCase)
+                    .OrderBy(g => SourceRank(g.First()))
+                    .ThenBy(g => g.Key, StringComparer.CurrentCultureIgnoreCase)
+                : shown.GroupBy(r => r.Device.ClassTitle, StringComparer.CurrentCultureIgnoreCase)
+                    .OrderBy(g => g.Key, StringComparer.CurrentCultureIgnoreCase);
+            foreach (var group in groups)
             {
                 present.Add(group.Key);
                 if (!_groups.TryGetValue(group.Key, out var header))
@@ -840,6 +878,26 @@ public sealed class DriverList : ObservableObject
         RefreshSelection();
     }
 
+    /// <summary>The heading a device sits under by source: where its driver came from.</summary>
+    private static string SourceGroup(DeviceRow row) => row.Origin is { } origin
+        ? origin.Kind switch
+        {
+            OriginKind.Windows => "Shipped with Windows",
+            OriginKind.WindowsUpdate => "Windows Update",
+            OriginKind.Unknown => "Source not recorded",
+            OriginKind.Program when origin.Package?.Publisher is { } publisher => $"Packages from {publisher}",
+            _ => origin.Title,
+        }
+        : row.Device.HasDriver ? "Source not recorded" : "No driver";
+
+    /// <summary>
+    /// What's worth checking first: Windows Update, programs and apps, installers and folders, the
+    /// unrecorded; then Windows' own (most devices, kept current with Windows), and no driver last.
+    /// </summary>
+    private static int SourceRank(DeviceRow row) => row.Origin is { } origin
+        ? origin.Kind == OriginKind.Windows ? 100 : (int)origin.Kind
+        : int.MaxValue;
+
     private bool MatchesDevice(DeviceRow row)
     {
         var d = row.Device;
@@ -851,7 +909,7 @@ public sealed class DriverList : ObservableObject
             _ => true,
         };
 
-        return shown && Search(d.Name, d.InstanceId, d.ClassTitle, d.Provider, d.Version, d.Manufacturer, d.Inf, d.Service)
+        return shown && Search(d.Name, d.InstanceId, d.ClassTitle, d.Provider, d.Version, d.Manufacturer, d.Inf, d.Service, row.SourceText)
             || (shown && HasSearch && d.HardwareIds.Any(id => Search(id)));
     }
 
@@ -865,7 +923,7 @@ public sealed class DriverList : ObservableObject
             _ => true,
         };
 
-        return shown && Search(m.Name, m.Path, m.Service?.Name, m.Service?.DisplayName, m.File.Description, m.File.Company, m.File.Signature.Signer);
+        return shown && Search(m.Name, m.Path, m.Service?.Name, m.Service?.DisplayName, m.File.Description, m.File.Company, m.File.Signature.Signer, row.SourceText);
     }
 
     /// <summary>True when there's no search, or any of the texts contains it.</summary>
@@ -884,6 +942,7 @@ public sealed class DriverList : ObservableObject
         {
             DriverSortKey.Status => Rank(a).CompareTo(Rank(b)),
             DriverSortKey.Driver => string.Compare(a.DriverText, b.DriverText, StringComparison.CurrentCultureIgnoreCase),
+            DriverSortKey.Source => string.Compare(a.SourceText, b.SourceText, StringComparison.CurrentCultureIgnoreCase),
             DriverSortKey.Version => CompareVersions(a.Device.Version, b.Device.Version),
             DriverSortKey.Date => Nullable.Compare(a.Device.Date, b.Device.Date),
             _ => 0,
@@ -907,6 +966,7 @@ public sealed class DriverList : ObservableObject
                 ? (a.Look.HasText ? -1 : 1)
                 : string.Compare(a.SignatureText, b.SignatureText, StringComparison.CurrentCultureIgnoreCase),
             DriverSortKey.Description => string.Compare(a.DescriptionText, b.DescriptionText, StringComparison.CurrentCultureIgnoreCase),
+            DriverSortKey.Source => string.Compare(a.SourceText, b.SourceText, StringComparison.CurrentCultureIgnoreCase),
             DriverSortKey.Version => CompareVersions(a.Module.File.Version, b.Module.File.Version),
             _ => 0,
         };
@@ -980,9 +1040,23 @@ public sealed class DriverList : ObservableObject
         OnPropertyChanged(nameof(IsChangesTab));
         OnPropertyChanged(nameof(IsCrashesTab));
         OnPropertyChanged(nameof(SearchHint));
+        OnPropertyChanged(nameof(ShowToolsHint));
         OnPropertyChanged(nameof(UpdatesFailed));
         if (_selectedTab != tab)
             Select(null);
+    }
+
+    private void SetLayout(bool isChecked, int layout)
+    {
+        if (!isChecked || _layout == layout)
+            return;
+
+        _layout = layout;
+        OnPropertyChanged(nameof(IsGrouped));
+        OnPropertyChanged(nameof(IsByClass));
+        OnPropertyChanged(nameof(IsBySource));
+        OnPropertyChanged(nameof(IsFlat));
+        RenderDevices();
     }
 
     private void SetDeviceShow(bool isChecked, int show)
@@ -1126,6 +1200,7 @@ public sealed class DriverList : ObservableObject
         details.CanShowDevice = false;
         details.CanShowModule = false;
         details.ShowDeviceManager = false;
+        details.Tools = [];
         details.NeedsElevation = string.Empty;
         details.LookTitle = string.Empty;
         details.LookText = string.Empty;
@@ -1198,7 +1273,7 @@ public sealed class DriverList : ObservableObject
             if (d.Date is { } date)
                 driver.Add(new DriverFact("Date", DriverText.DriverDate(date)));
             Add(driver, "INF", d.Inf is null ? null : d.InfSection is null ? d.Inf : $"{d.Inf} ({d.InfSection})");
-            driver.Add(new DriverFact("Source", d.IsThirdParty ? "A package added to Windows (third-party)" : "Shipped with Windows"));
+            driver.Add(new DriverFact("Kind", d.IsThirdParty ? "A package added to Windows (third-party)" : "Shipped with Windows"));
         }
 
         DriverService? service = null;
@@ -1224,6 +1299,9 @@ public sealed class DriverList : ObservableObject
         }
 
         groups.Add(new DriverFactGroup("Driver", driver));
+        if (row.Origin is { } origin)
+            groups.Add(SourceFacts(origin));
+        details.Tools = ToolLinks(row.Origin);
 
         var device = new List<DriverFact> { new("Status", d.IsPresent ? row.Status.Text : "Not connected") };
         Add(device, "Manufacturer", d.Manufacturer);
@@ -1297,7 +1375,10 @@ public sealed class DriverList : ObservableObject
                 fileFacts.Add(new DriverFact("Modified", modified.ToString("g", CultureInfo.CurrentCulture)));
         }
 
-        details.Groups = [new DriverFactGroup("Module", module), new DriverFactGroup("File", fileFacts)];
+        details.Groups = row.Origin is { } origin
+            ? [new DriverFactGroup("Module", module), new DriverFactGroup("File", fileFacts), SourceFacts(origin)]
+            : [new DriverFactGroup("Module", module), new DriverFactGroup("File", fileFacts)];
+        details.Tools = ToolLinks(row.Origin);
         details.CanOpenLocation = file.Exists;
         details.OpenLocationText = "Open file location";
         details.CanShowDevice = users.Count > 0;
@@ -1407,6 +1488,55 @@ public sealed class DriverList : ObservableObject
         details.CanShowModule = module is not null;
         if (_crashes is { NeedsElevation: true } && c.Driver is null && c.Kind is CrashKind.BlueScreen or CrashKind.Recovered)
             details.NeedsElevation = "Reading the crash dump, to find the driver involved, needs administrator rights.";
+    }
+
+    private static DriverFactGroup SourceFacts(DriverOrigin origin)
+    {
+        var facts = new List<DriverFact> { new("From", origin.Title) };
+        if (origin.Installed is { } installed)
+            facts.Add(new DriverFact("Installed", DriverText.Time(installed)));
+        if (origin.Package is { } package)
+            facts.Add(new DriverFact("Package", package.Version is null ? package.Name : $"{package.Name} ({package.Version})"));
+        if (origin.Source is { } source)
+            facts.Add(new DriverFact(source.Contains('\\') ? "Installed from" : "For hardware id", source));
+        facts.Add(new DriverFact("How we know", origin.Detail));
+        facts.Add(new DriverFact("Updates", UpdatesFrom(origin)));
+        return new DriverFactGroup("Source", facts);
+    }
+
+    /// <summary>Where newer versions of it come from, in words.</summary>
+    private static string UpdatesFrom(DriverOrigin origin)
+    {
+        if (origin.Kind == OriginKind.Windows)
+            return "With Windows itself: Windows Update keeps it current.";
+
+        var from = new List<string>();
+        if (origin.Kind == OriginKind.WindowsUpdate)
+            from.Add("Windows Update (the Updates tab)");
+        from.AddRange(origin.Tools.Select(t => t.Name));
+        if (from.Count == 0)
+        {
+            from.Add(origin.Package is { } package
+                ? $"a newer {package.Name}, from its maker; Windows Update may also offer one (the Updates tab)"
+                : "its maker's website; Windows Update may also offer one (the Updates tab)");
+        }
+
+        return string.Join(", or ", from) + ".";
+    }
+
+    private IReadOnlyList<ToolLink> ToolLinks(DriverOrigin? origin) =>
+        origin is null ? [] : [.. origin.Tools.Select(t => new ToolLink(t.Name, () => OpenTool(t)))];
+
+    private void OpenTool(VendorTool tool)
+    {
+        try
+        {
+            using var _ = Process.Start(new ProcessStartInfo(tool.Shortcut) { UseShellExecute = true });
+        }
+        catch (Exception ex) when (ex is System.ComponentModel.Win32Exception or InvalidOperationException)
+        {
+            Say($"Couldn't open {tool.Name}.", isError: true);
+        }
     }
 
     private static void Add(List<DriverFact> facts, string label, string? value)

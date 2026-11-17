@@ -84,6 +84,24 @@
                       <TextBlock Text="Update from file…" VerticalAlignment="Center" />
                     </StackPanel>
                   </Button>
+                  <ItemsControl ItemsSource="{Binding Tools}" IsVisible="{Binding HasTools}">
+                    <ItemsControl.ItemsPanel>
+                      <ItemsPanelTemplate>
+                        <WrapPanel ItemSpacing="8" LineSpacing="8" />
+                      </ItemsPanelTemplate>
+                    </ItemsControl.ItemsPanel>
+                    <ItemsControl.ItemTemplate>
+                      <DataTemplate x:DataType="drv:ToolLink">
+                        <Button Theme="{StaticResource SoftButton}" Command="{Binding OpenCommand}"
+                                ToolTip.Tip="The vendor's own tool, which checks for and installs its newer drivers">
+                          <StackPanel Orientation="Horizontal" Spacing="6">
+                            <ctl:Icon Width="14" Height="14" Data="{StaticResource IconDownload}" />
+                            <TextBlock Text="{Binding Text}" VerticalAlignment="Center" />
+                          </StackPanel>
+                        </Button>
+                      </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                  </ItemsControl>
                   <Button Theme="{StaticResource SoftButton}" Command="{Binding OpenLocationCommand}"
                           IsVisible="{Binding CanOpenLocation}" ToolTip.Tip="Show the file in File Explorer">
                     <StackPanel Orientation="Horizontal" Spacing="6">
@@ -327,8 +345,10 @@
 
         <StackPanel Grid.Column="3" Orientation="Horizontal" Spacing="4" VerticalAlignment="Center"
                     IsVisible="{Binding IsDevicesTab}" AutomationProperties.Name="Layout">
-          <RadioButton Theme="{StaticResource SegmentButton}" GroupName="DevicesLayout" Content="Groups"
-                       IsChecked="{Binding IsGrouped}" ToolTip.Tip="Devices under their class, as Device Manager lists them" />
+          <RadioButton Theme="{StaticResource SegmentButton}" GroupName="DevicesLayout" Content="By class"
+                       IsChecked="{Binding IsByClass}" ToolTip.Tip="Devices under their class, as Device Manager lists them" />
+          <RadioButton Theme="{StaticResource SegmentButton}" GroupName="DevicesLayout" Content="By source"
+                       IsChecked="{Binding IsBySource}" ToolTip.Tip="Devices under where their driver came from: Windows, Windows Update, a vendor's package" />
           <RadioButton Theme="{StaticResource SegmentButton}" GroupName="DevicesLayout" Content="List"
                        IsChecked="{Binding IsFlat}" ToolTip.Tip="Every device in one sorted list" />
         </StackPanel>
@@ -356,12 +376,35 @@
         </Grid>
       </Border>
 
-      <Border Grid.Row="5" Classes="callout warning" Margin="0,0,0,12" IsVisible="{Binding UpdatesFailed}">
-        <Grid ColumnDefinitions="Auto,*" ColumnSpacing="10">
-          <ctl:Icon Classes="status" Width="16" Height="16" VerticalAlignment="Top" Data="{StaticResource IconWarning}" />
-          <TextBlock Grid.Column="1" Text="{Binding UpdatesEmptyHint}" TextWrapping="Wrap" FontSize="{StaticResource SlTextSmall}" />
-        </Grid>
-      </Border>
+      <StackPanel Grid.Row="5">
+        <Border Classes="callout warning" Margin="0,0,0,12" IsVisible="{Binding UpdatesFailed}">
+          <Grid ColumnDefinitions="Auto,*" ColumnSpacing="10">
+            <ctl:Icon Classes="status" Width="16" Height="16" VerticalAlignment="Top" Data="{StaticResource IconWarning}" />
+            <TextBlock Grid.Column="1" Text="{Binding UpdatesEmptyHint}" TextWrapping="Wrap" FontSize="{StaticResource SlTextSmall}" />
+          </Grid>
+        </Border>
+
+        <!-- Windows Update isn't the only source: vendors' own tools update the drivers they shipped. -->
+        <Border Classes="callout info" Margin="0,0,0,12" IsVisible="{Binding ShowToolsHint}">
+          <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto" ColumnSpacing="10" RowSpacing="8">
+            <ctl:Icon Classes="status" Width="16" Height="16" VerticalAlignment="Top" Data="{StaticResource IconDownload}" />
+            <TextBlock Grid.Column="1" TextWrapping="Wrap" FontSize="{StaticResource SlTextSmall}"
+                       Text="Vendors' own tools on this computer also update the drivers they look after, often sooner than Windows Update. Each driver's details say which tool covers it." />
+            <ItemsControl Grid.Row="1" Grid.Column="1" ItemsSource="{Binding Tools}">
+              <ItemsControl.ItemsPanel>
+                <ItemsPanelTemplate>
+                  <WrapPanel ItemSpacing="8" LineSpacing="8" />
+                </ItemsPanelTemplate>
+              </ItemsControl.ItemsPanel>
+              <ItemsControl.ItemTemplate>
+                <DataTemplate x:DataType="drv:ToolLink">
+                  <Button Theme="{StaticResource SoftButton}" Command="{Binding OpenCommand}" Content="{Binding Text}" />
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+          </Grid>
+        </Border>
+      </StackPanel>
 
       <Grid Grid.Row="6" x:Name="Body" ColumnDefinitions="*,Auto">
         <Border Classes="card" Padding="0" ClipToBounds="True">
@@ -369,13 +412,14 @@
             <!-- ========== Devices ========== -->
             <Grid RowDefinitions="Auto,*" IsVisible="{Binding IsDevicesTab}">
               <Border Classes="table-header">
-                <Grid ColumnDefinitions="2*,120,*,150,96,Auto" ColumnSpacing="16">
+                <Grid ColumnDefinitions="2*,120,*,*,140,96,Auto" ColumnSpacing="16">
                   <ContentControl Content="{Binding DeviceNameColumn}" ContentTemplate="{StaticResource SortHeaderTemplate}" />
                   <ContentControl Grid.Column="1" Content="{Binding DeviceStatusColumn}" ContentTemplate="{StaticResource SortHeaderTemplate}" />
                   <ContentControl Grid.Column="2" Content="{Binding DeviceDriverColumn}" ContentTemplate="{StaticResource SortHeaderTemplate}" />
-                  <ContentControl Grid.Column="3" Content="{Binding DeviceVersionColumn}" ContentTemplate="{StaticResource SortHeaderTemplate}" />
-                  <ContentControl Grid.Column="4" Content="{Binding DeviceDateColumn}" ContentTemplate="{StaticResource SortHeaderTemplate}" />
-                  <TextBlock Grid.Column="5" Width="150" Text="Class" VerticalAlignment="Center" IsVisible="{Binding IsFlat}" />
+                  <ContentControl Grid.Column="3" Content="{Binding DeviceSourceColumn}" ContentTemplate="{StaticResource SortHeaderTemplate}" />
+                  <ContentControl Grid.Column="4" Content="{Binding DeviceVersionColumn}" ContentTemplate="{StaticResource SortHeaderTemplate}" />
+                  <ContentControl Grid.Column="5" Content="{Binding DeviceDateColumn}" ContentTemplate="{StaticResource SortHeaderTemplate}" />
+                  <TextBlock Grid.Column="6" Width="150" Text="Class" VerticalAlignment="Center" IsVisible="{Binding IsFlat}" />
                 </Grid>
               </Border>
 
@@ -402,7 +446,7 @@
                   <DataTemplate DataType="drv:DeviceRow" x:DataType="drv:DeviceRow">
                     <Button Classes="entry" Theme="{StaticResource SelectableRow}" Classes.selected="{Binding IsSelected}"
                             Command="{Binding SelectCommand}" AutomationProperties.Name="{Binding AccessibleName}">
-                      <Grid ColumnDefinitions="2*,120,*,150,96,Auto" ColumnSpacing="16">
+                      <Grid ColumnDefinitions="2*,120,*,*,140,96,Auto" ColumnSpacing="16">
                         <TextBlock Classes="cell name" Text="{Binding Name}" ToolTip.Tip="{Binding ToolTip}" />
                         <ContentControl Grid.Column="1" Content="{Binding Status}" ContentTemplate="{StaticResource BadgeTemplate}" />
                         <Grid Grid.Column="2" ColumnDefinitions="Auto,*" VerticalAlignment="Center">
@@ -411,9 +455,10 @@
                           </Border>
                           <TextBlock Grid.Column="1" Classes="cell" Text="{Binding DriverText}" ToolTip.Tip="{Binding DriverText}" />
                         </Grid>
-                        <TextBlock Grid.Column="3" Classes="cell" FontFamily="{StaticResource SlFontMono}" Text="{Binding VersionText}" />
-                        <TextBlock Grid.Column="4" Classes="cell" Text="{Binding DateText}" />
-                        <TextBlock Grid.Column="5" Classes="cell class" Width="150" Text="{Binding ClassText}" />
+                        <TextBlock Grid.Column="3" Classes="cell" Text="{Binding SourceText}" ToolTip.Tip="{Binding SourceText}" />
+                        <TextBlock Grid.Column="4" Classes="cell" FontFamily="{StaticResource SlFontMono}" Text="{Binding VersionText}" />
+                        <TextBlock Grid.Column="5" Classes="cell" Text="{Binding DateText}" />
+                        <TextBlock Grid.Column="6" Classes="cell class" Width="150" Text="{Binding ClassText}" />
                       </Grid>
                     </Button>
                   </DataTemplate>
@@ -431,11 +476,12 @@
             <!-- ========== Kernel modules ========== -->
             <Grid RowDefinitions="Auto,*" IsVisible="{Binding IsModulesTab}">
               <Border Classes="table-header">
-                <Grid ColumnDefinitions="*,2*,2*,150" ColumnSpacing="16">
+                <Grid ColumnDefinitions="*,3*,3*,2*,140" ColumnSpacing="16">
                   <ContentControl Content="{Binding ModuleNameColumn}" ContentTemplate="{StaticResource SortHeaderTemplate}" />
                   <ContentControl Grid.Column="1" Content="{Binding ModuleSignatureColumn}" ContentTemplate="{StaticResource SortHeaderTemplate}" />
                   <ContentControl Grid.Column="2" Content="{Binding ModuleDescriptionColumn}" ContentTemplate="{StaticResource SortHeaderTemplate}" />
-                  <ContentControl Grid.Column="3" Content="{Binding ModuleVersionColumn}" ContentTemplate="{StaticResource SortHeaderTemplate}" />
+                  <ContentControl Grid.Column="3" Content="{Binding ModuleSourceColumn}" ContentTemplate="{StaticResource SortHeaderTemplate}" />
+                  <ContentControl Grid.Column="4" Content="{Binding ModuleVersionColumn}" ContentTemplate="{StaticResource SortHeaderTemplate}" />
                 </Grid>
               </Border>
 
@@ -444,14 +490,15 @@
                   <DataTemplate DataType="drv:ModuleRow" x:DataType="drv:ModuleRow">
                     <Button Classes="entry" Theme="{StaticResource SelectableRow}" Classes.selected="{Binding IsSelected}"
                             Command="{Binding SelectCommand}" AutomationProperties.Name="{Binding AccessibleName}">
-                      <Grid ColumnDefinitions="*,2*,2*,150" ColumnSpacing="16">
+                      <Grid ColumnDefinitions="*,3*,3*,2*,140" ColumnSpacing="16">
                         <TextBlock Classes="cell name" FontFamily="{StaticResource SlFontMono}" Text="{Binding Name}" ToolTip.Tip="{Binding ToolTip}" />
                         <Grid Grid.Column="1" ColumnDefinitions="Auto,*" VerticalAlignment="Center">
                           <ContentControl Margin="0,0,6,0" Content="{Binding Look}" ContentTemplate="{StaticResource BadgeTemplate}" />
                           <TextBlock Grid.Column="1" Classes="cell" Text="{Binding SignatureText}" ToolTip.Tip="{Binding SignatureText}" />
                         </Grid>
                         <TextBlock Grid.Column="2" Classes="cell" Text="{Binding DescriptionText}" ToolTip.Tip="{Binding DescriptionText}" />
-                        <TextBlock Grid.Column="3" Classes="cell" FontFamily="{StaticResource SlFontMono}" Text="{Binding VersionText}" />
+                        <TextBlock Grid.Column="3" Classes="cell" Text="{Binding SourceText}" ToolTip.Tip="{Binding SourceText}" />
+                        <TextBlock Grid.Column="4" Classes="cell" FontFamily="{StaticResource SlFontMono}" Text="{Binding VersionText}" />
                       </Grid>
                     </Button>
                   </DataTemplate>
