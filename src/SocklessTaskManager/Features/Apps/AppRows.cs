@@ -69,6 +69,7 @@ public sealed class AppGroupRow : ObservableObject
     private string _countText = string.Empty;
     private bool _isExpanded;
     private bool _hasProblem;
+    private bool _hasUpdates;
 
     internal AppGroupRow(AppGroup group, bool isExpanded, Action<AppGroupRow> toggle)
     {
@@ -103,6 +104,12 @@ public sealed class AppGroupRow : ObservableObject
         set => Set(ref _hasProblem, value);
     }
 
+    public bool HasUpdates
+    {
+        get => _hasUpdates;
+        set => Set(ref _hasUpdates, value);
+    }
+
     public bool IsExpanded
     {
         get => _isExpanded;
@@ -131,12 +138,14 @@ public sealed class AppRow : ObservableObject
     private string _sizeText = string.Empty;
     private string _installedWithText = string.Empty;
     private string _problemText = string.Empty;
+    private string _updateText = string.Empty;
     private string _toolTip = string.Empty;
     private string _uninstallText = "Uninstall";
     private bool _isSelected;
     private bool _canUninstall;
     private bool _canModify;
     private bool _canRepair;
+    private bool _canUpdate;
     private bool _hasLocation;
 
     internal AppRow(string id, AppRowActions actions)
@@ -146,6 +155,7 @@ public sealed class AppRow : ObservableObject
         UninstallCommand = new RelayCommand(() => actions.Uninstall(this));
         ModifyCommand = new RelayCommand(() => actions.Modify(this));
         RepairCommand = new RelayCommand(() => actions.Repair(this));
+        UpdateCommand = new RelayCommand(() => actions.Update(this));
         OpenLocationCommand = new RelayCommand(() => actions.OpenLocation(this));
         CopyNameCommand = new RelayCommand(() => actions.CopyName(this));
     }
@@ -161,6 +171,8 @@ public sealed class AppRow : ObservableObject
     public ICommand ModifyCommand { get; }
 
     public ICommand RepairCommand { get; }
+
+    public ICommand UpdateCommand { get; }
 
     public ICommand OpenLocationCommand { get; }
 
@@ -222,6 +234,22 @@ public sealed class AppRow : ObservableObject
 
     public bool HasProblem => _problemText.Length > 0;
 
+    /// <summary>"Update 4.0.2"; empty when it's up to date, or nothing knows of a newer version.</summary>
+    public string UpdateText
+    {
+        get => _updateText;
+        set
+        {
+            if (Set(ref _updateText, value))
+            {
+                OnPropertyChanged(nameof(HasUpdate));
+                OnPropertyChanged(nameof(AccessibleName));
+            }
+        }
+    }
+
+    public bool HasUpdate => _updateText.Length > 0;
+
     public string ToolTip
     {
         get => _toolTip;
@@ -259,13 +287,19 @@ public sealed class AppRow : ObservableObject
         set => Set(ref _canRepair, value);
     }
 
+    public bool CanUpdate
+    {
+        get => _canUpdate;
+        set => Set(ref _canUpdate, value);
+    }
+
     public bool HasLocation
     {
         get => _hasLocation;
         set => Set(ref _hasLocation, value);
     }
 
-    public string AccessibleName => HasProblem ? $"{_name}, {_problemText}" : _name;
+    public string AccessibleName => string.Join(", ", new[] { _name, _problemText, _updateText }.Where(t => t.Length > 0));
 }
 
 /// <summary>What a row's commands do; the list implements them.</summary>
@@ -274,6 +308,7 @@ internal sealed record AppRowActions(
     Action<AppRow> Uninstall,
     Action<AppRow> Modify,
     Action<AppRow> Repair,
+    Action<AppRow> Update,
     Action<AppRow> OpenLocation,
     Action<AppRow> CopyName);
 
@@ -283,6 +318,8 @@ internal sealed record AppDetailActions(
     Action Uninstall,
     Action Modify,
     Action Repair,
+    Action Update,
+    Action OpenStore,
     Action RemoveEntry,
     Action OpenLocation,
     Action ShowProcesses,
@@ -305,6 +342,9 @@ public sealed class AppDetails : ObservableObject
     private bool _canUninstall;
     private bool _canModify;
     private bool _canRepair;
+    private string _updateText = string.Empty;
+    private bool _canUpdate;
+    private bool _hasStoreLink;
     private bool _canRemoveEntry;
     private bool _hasLocation;
     private bool _hasWebsite;
@@ -325,6 +365,8 @@ public sealed class AppDetails : ObservableObject
         UninstallCommand = new RelayCommand(actions.Uninstall);
         ModifyCommand = new RelayCommand(actions.Modify);
         RepairCommand = new RelayCommand(actions.Repair);
+        UpdateCommand = new RelayCommand(actions.Update);
+        OpenStoreCommand = new RelayCommand(actions.OpenStore);
         RemoveEntryCommand = new RelayCommand(actions.RemoveEntry);
         OpenLocationCommand = new RelayCommand(actions.OpenLocation);
         ShowProcessesCommand = new RelayCommand(actions.ShowProcesses);
@@ -344,6 +386,10 @@ public sealed class AppDetails : ObservableObject
     public ICommand ModifyCommand { get; }
 
     public ICommand RepairCommand { get; }
+
+    public ICommand UpdateCommand { get; }
+
+    public ICommand OpenStoreCommand { get; }
 
     public ICommand RemoveEntryCommand { get; }
 
@@ -442,6 +488,32 @@ public sealed class AppDetails : ObservableObject
     {
         get => _canRepair;
         set => Set(ref _canRepair, value);
+    }
+
+    /// <summary>"Update to 4.0.2"; empty when there's no update.</summary>
+    public string UpdateText
+    {
+        get => _updateText;
+        set
+        {
+            if (Set(ref _updateText, value))
+                OnPropertyChanged(nameof(HasUpdate));
+        }
+    }
+
+    public bool HasUpdate => _updateText.Length > 0;
+
+    public bool CanUpdate
+    {
+        get => _canUpdate;
+        set => Set(ref _canUpdate, value);
+    }
+
+    /// <summary>A Store app nothing here has an update for: the Store's own updates page may.</summary>
+    public bool HasStoreLink
+    {
+        get => _hasStoreLink;
+        set => Set(ref _hasStoreLink, value);
     }
 
     /// <summary>What the entry names is gone: offer to remove the entry itself.</summary>

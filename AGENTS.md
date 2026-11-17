@@ -134,6 +134,12 @@ src/SocklessTaskManager/
                         - Only http(s) links from the registry reach the shell.
                         - The selected app's running processes and size on disk (AppFolder) are read once, on
                           select; "Show in Processes" uses ProcessQuery.Folder.
+                        - Updates (Updates/): winget's `upgrade` table (WingetTable: redirected, it's full width;
+                          columns found where the translated titles start, wide characters shifted), matched to
+                          apps by name then version; `choco outdated -r`; Scoop against its local buckets. Asked
+                          online on first show, Refresh and after updating, never per tick. An update holds while
+                          the app's version is the one it had when checked. Updating runs the updater in a window;
+                          "Update all" does them one by one and can stop between. Not the top bar's self-update.
     Updates/            not a page: the top bar's update offer. Reads the latest tag from GitHub's /releases/latest
                         redirect, downloads the release zip, checks its .sha256, renames running files to .old and
                         moves the new ones in, then restarts. Local builds are version 0.0.0 and never check;

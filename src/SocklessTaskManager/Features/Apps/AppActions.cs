@@ -63,7 +63,7 @@ internal static class AppActions
                 return AppOutcome.Done;
 
             process.WaitForExit();
-            return command.IsMsi ? Msi(process.ExitCode) : AppOutcome.Done;
+            return command.IsMsi ? Msi(process.ExitCode) : command.IsWinget ? Winget(process.ExitCode) : AppOutcome.Done;
         }
         catch (Win32Exception ex) when (ex.NativeErrorCode == ErrorCancelled)
         {
@@ -79,6 +79,16 @@ internal static class AppActions
             return new AppOutcome($"Windows couldn't start {Path.GetFileName(command.Program)}.");
         }
     }
+
+    /// <summary>What winget's exit code (an HRESULT) means.</summary>
+    private static AppOutcome Winget(int code) => code switch
+    {
+        0 => AppOutcome.Done,
+        unchecked((int)0x8A15002B) => new AppOutcome("winget found no update that applies to this installation."),
+        1602 or unchecked((int)0x80070642) => new AppOutcome("Cancelled."),
+        3010 or 1641 => new AppOutcome(null, NeedsRestart: true),
+        _ => new AppOutcome($"winget stopped with error 0x{code:X8}. Run the update command in a terminal to see why."),
+    };
 
     /// <summary>What msiexec's exit code means.</summary>
     private static AppOutcome Msi(int code) => code switch

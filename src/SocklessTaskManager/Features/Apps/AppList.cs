@@ -9,9 +9,11 @@ namespace Sockless.TaskManager.Features.Apps;
 
 /// <summary>
 /// The Apps page's state: every installed app, grouped by how it was installed or in one list,
-/// filtered to recent installs, to those worth a look, or by a search, with frameworks, components
-/// and updates hidden unless asked for. The selected app's details uninstall, change or repair it
-/// the way it was installed. Scans when first shown, on Refresh, after a change, and when the
+/// filtered to those with updates, recent installs, those worth a look, or by a search, with
+/// frameworks, components and updates hidden unless asked for. The selected app's details update,
+/// uninstall, change or repair it the way it was installed; "Update all" updates each in turn.
+/// Updates are looked for (online, through winget and Chocolatey) when the page is first shown,
+/// on Refresh and after updating. Scans when first shown, on Refresh, after a change, and when the
 /// uninstall registry or this user's packages change while the page is on screen; nothing runs per tick.
 /// </summary>
 public sealed class AppList : ObservableObject, IDisposable
@@ -19,6 +21,7 @@ public sealed class AppList : ObservableObject, IDisposable
     private const int ShowAll = 0;
     private const int ShowRecent = 1;
     private const int ShowProblems = 2;
+    private const int ShowUpdates = 3;
 
     private static readonly TimeSpan RecentSpan = TimeSpan.FromDays(30);
 
@@ -40,6 +43,13 @@ public sealed class AppList : ObservableObject, IDisposable
     private readonly HashSet<string> _busy = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, (string Name, DateTime Until)> _following = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, string> _diskSizes = new(StringComparer.OrdinalIgnoreCase);
+    private Dictionary<string, AppUpdate> _updates = new(StringComparer.OrdinalIgnoreCase);
+    private bool _isChecking;
+    private bool _checkWanted;
+    private Queue<(AppItem Item, AppUpdate Update)>? _updateQueue;
+    private int _updateTotal;
+    private List<string> _updateFailures = [];
+    private bool _stopUpdating;
     private AppWatcher? _watcher;
     private CancellationTokenSource? _measuring;
     private AppSnapshot? _latest;
@@ -68,7 +78,7 @@ public sealed class AppList : ObservableObject, IDisposable
     {
         _navigator = navigator;
         _rowActions = new AppRowActions(Select, row => Act(row, () => AskRun(Kind.Uninstall)), row => Act(row, () => AskRun(Kind.Modify)),
-            row => Act(row, () => AskRun(Kind.Repair)), row => Act(row, OpenLocation), row => CopyRequested?.Invoke(row.Name));
+            row => Act(row, () => AskRun(Kind.Repair)), row => Act(row, AskUpdate), row => Act(row, OpenLocation), row => CopyRequested?.Invoke(row.Name));
 
         NameColumn = new AppColumn("Name", AppSortKey.Name, Sort);
         PublisherColumn = new AppColumn("Publisher", AppSortKey.Publisher, Sort);
@@ -80,7 +90,13 @@ public sealed class AppList : ObservableObject, IDisposable
         NameColumn.IsActive = true;
 
         ClearSearchCommand = new RelayCommand(() => SearchText = string.Empty);
-        RefreshCommand = new RelayCommand(() => Refresh(readFeatures: true));
+        RefreshCommand = new RelayCommand(RefreshAll);
+        UpdateAllCommand = new RelayCommand(AskUpdateAll);
+        StopUpdatingCommand = new RelayCommand(() =>
+        {
+            _stopUpdating = true;
+            OnPropertyChanged(nameof(CanStopUpdating));
+        });
         OpenBackupsCommand = new RelayCommand(OpenBackups);
 
         _settle = new DispatcherTimer { Interval = SettleDelay };
@@ -121,7 +137,7 @@ public sealed class AppList : ObservableObject, IDisposable
             {
                 _wasShown = true;
                 _watcher = new AppWatcher([.. InstalledPrograms.Keys, PackagedApps.Key], () => Dispatcher.UIThread.Post(OnRegistryChanged));
-                Refresh(readFeatures: true);
+                RefreshAll();
             }
             else if (_stale)
             {
@@ -152,6 +168,25 @@ public sealed class AppList : ObservableObject, IDisposable
 
     public ICommand OpenBackupsCommand { get; }
 
+    public ICommand UpdateAllCommand { get; }
+
+    public ICommand StopUpdatingCommand { get; }
+
+    /// <summary>Apps with a newer version waiting.</summary>
+    public int UpdateCount => _latest?.Items.Count(i => UpdateFor(i) is not null) ?? 0;
+
+    public bool HasUpdates => UpdateCount > 0;
+
+    public string UpdateAllText => $"Update all ({Format.Number(UpdateCount)})";
+
+    public bool CanUpdateAll => HasUpdates && _updateQueue is null && !_isChecking;
+
+    public bool IsUpdatingAll => _updateQueue is not null;
+
+    public bool CanStopUpdating => _updateQueue is not null && !_stopUpdating;
+
+    public string UpdatesSegmentText => HasUpdates ? $"Updates ({Format.Number(UpdateCount)})" : "Updates";
+
     public ICommand RestartElevatedCommand { get; } = new RelayCommand(Elevation.Restart);
 
     /// <summary>Without elevation, optional features can't be read, and removing apps for everyone asks for rights each time.</summary>
@@ -173,6 +208,12 @@ public sealed class AppList : ObservableObject, IDisposable
     {
         get => _show == ShowProblems;
         set => SetShow(value, ShowProblems);
+    }
+
+    public bool IsShowUpdates
+    {
+        get => _show == ShowUpdates;
+        set => SetShow(value, ShowUpdates);
     }
 
     /// <summary>Frameworks, runtimes, components and updates too: they come and go with what they belong to.</summary>
@@ -260,10 +301,16 @@ public sealed class AppList : ObservableObject, IDisposable
     /// <summary>Nothing listed yet: the first scan is under way.</summary>
     public bool IsLoading => !_isLoaded;
 
-    public string EmptyTitle => HasSearch ? "Nothing matches" : _show == ShowProblems ? "Nothing to check" : _show == ShowRecent ? "Nothing new" : "Nothing to show";
+    public string EmptyTitle => HasSearch ? "Nothing matches"
+        : _show == ShowProblems ? "Nothing to check"
+        : _show == ShowRecent ? "Nothing new"
+        : _show == ShowUpdates ? (_isChecking ? "Looking for updates…" : "Everything's up to date")
+        : "Nothing to show";
 
     public string EmptyHint => HasSearch
         ? "Try another search, or show components as well."
+        : _show == ShowUpdates
+            ? _isChecking ? "winget and Chocolatey are asked online; this takes a few seconds." : "winget, Chocolatey and Scoop know of nothing newer. Store apps update through the Microsoft Store."
         : _show == ShowProblems
             ? "Every app's uninstaller and folder are where they should be."
             : _show == ShowRecent
@@ -331,12 +378,20 @@ public sealed class AppList : ObservableObject, IDisposable
 
     public void Dispose()
     {
+        _stopUpdating = true;
         _watcher?.Dispose();
         _measuring?.Cancel();
         _settle.Stop();
     }
 
     // ---------- Scanning ----------
+
+    /// <summary>Refresh: everything read again, optional features too, then updates looked for.</summary>
+    private void RefreshAll()
+    {
+        _checkWanted = true;
+        Refresh(readFeatures: true);
+    }
 
     /// <param name="readFeatures">Read optional features again (slow): on Refresh, or after changing one.</param>
     public void Refresh(bool readFeatures)
@@ -376,10 +431,74 @@ public sealed class AppList : ObservableObject, IDisposable
                         _rescanFeatures = false;
                         Refresh(features);
                     }
+                    else if (_checkWanted && _updateQueue is null)
+                    {
+                        _checkWanted = false;
+                        CheckUpdates();
+                    }
                 });
             }
         });
     }
+
+    /// <summary>Asks winget, Chocolatey and Scoop for newer versions of what's listed, in the background.</summary>
+    private void CheckUpdates()
+    {
+        if (_isChecking || _latest is not { } snapshot)
+        {
+            _checkWanted = true;
+            return;
+        }
+
+        _isChecking = true;
+        UpdatesChanged();
+        Summary = SummaryOf(snapshot);
+        var items = snapshot.Items;
+        _ = Task.Run(() =>
+        {
+            UpdateCheck check;
+            try
+            {
+                check = AppUpdates.Check(items);
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"Update check failed: {ex}");
+                check = new UpdateCheck(new(StringComparer.OrdinalIgnoreCase), "Couldn't look for updates.");
+            }
+
+            Dispatcher.UIThread.Post(() =>
+            {
+                _isChecking = false;
+                _updates = check.Updates;
+                if (check.Failure is { } failure && !HasNotice)
+                    Notice = failure;
+                Render();
+                if (_checkWanted && _updateQueue is null && !_isScanning)
+                {
+                    _checkWanted = false;
+                    CheckUpdates();
+                }
+            });
+        });
+    }
+
+    private void UpdatesChanged()
+    {
+        OnPropertyChanged(nameof(UpdateCount));
+        OnPropertyChanged(nameof(HasUpdates));
+        OnPropertyChanged(nameof(UpdateAllText));
+        OnPropertyChanged(nameof(CanUpdateAll));
+        OnPropertyChanged(nameof(IsUpdatingAll));
+        OnPropertyChanged(nameof(CanStopUpdating));
+        OnPropertyChanged(nameof(UpdatesSegmentText));
+        OnPropertyChanged(nameof(EmptyTitle));
+        OnPropertyChanged(nameof(EmptyHint));
+    }
+
+    /// <summary>The app's update, while its version is still the one it had when updates were looked for.</summary>
+    private AppUpdate? UpdateFor(AppItem item) =>
+        _updates.TryGetValue(item.Id, out var update) && AppUpdates.IsCurrent(update, item) ? update : null;
 
     /// <summary>Something was installed or uninstalled: read again once it settles, now if on screen, else when next shown.</summary>
     private void OnRegistryChanged()
@@ -439,6 +558,7 @@ public sealed class AppList : ObservableObject, IDisposable
         OnPropertyChanged(nameof(IsShowAll));
         OnPropertyChanged(nameof(IsShowRecent));
         OnPropertyChanged(nameof(IsShowProblems));
+        OnPropertyChanged(nameof(IsShowUpdates));
         Render();
     }
 
@@ -499,10 +619,15 @@ public sealed class AppList : ObservableObject, IDisposable
 
                 var count = group.Count();
                 var problems = group.Count(r => r.HasProblem);
-                header.CountText = problems > 0
-                    ? $"{Plural(count, "app", "apps")} · {Format.Number(problems)} to check"
-                    : Plural(count, "app", "apps");
+                var updates = group.Count(r => r.HasUpdate);
+                header.CountText = string.Join(" · ", new[]
+                {
+                    Plural(count, "app", "apps"),
+                    updates > 0 ? Plural(updates, "update", "updates") : null,
+                    problems > 0 ? $"{Format.Number(problems)} to check" : null,
+                }.OfType<string>());
                 header.HasProblem = problems > 0;
+                header.HasUpdates = updates > 0;
                 header.IsExpanded = searching || !_collapsed.Contains(group.Key);
                 wanted.Add(header);
                 if (header.IsExpanded)
@@ -522,6 +647,7 @@ public sealed class AppList : ObservableObject, IDisposable
         OnPropertyChanged(nameof(EmptyTitle));
         OnPropertyChanged(nameof(EmptyHint));
         Summary = SummaryOf(snapshot);
+        UpdatesChanged();
 
         if (_selected is not null)
         {
@@ -540,11 +666,14 @@ public sealed class AppList : ObservableObject, IDisposable
 
     private bool Matches(AppItem item)
     {
-        if (!_showComponents && AppText.IsComponent(item) && !HasSearch)
+        // An update is shown wherever it is: frameworks and runtimes need updating too.
+        var update = UpdateFor(item);
+        if (!_showComponents && AppText.IsComponent(item) && !HasSearch && !(_show == ShowUpdates && update is not null))
             return false;
 
         switch (_show)
         {
+            case ShowUpdates when update is null:
             case ShowRecent when item.InstalledOn is not { } date || DateTime.Now - date > RecentSpan:
             case ShowProblems when item.Problem is null:
                 return false;
@@ -616,6 +745,8 @@ public sealed class AppList : ObservableObject, IDisposable
         row.SizeText = AppText.Size(item.Size);
         row.InstalledWithText = item.InstalledWith;
         row.ProblemText = item.Problem ?? string.Empty;
+        var update = UpdateFor(item);
+        row.UpdateText = update is null ? string.Empty : $"Update {update.Available}";
         row.ToolTip = item.Location is { } location ? $"{item.Name}\n{location}" : item.Name;
         row.UninstallText = $"{item.UninstallText}…";
         row.HasLocation = item.Location is not null;
@@ -624,6 +755,7 @@ public sealed class AppList : ObservableObject, IDisposable
         row.CanUninstall = idle && item.Uninstall is not null;
         row.CanModify = idle && item.Modify is not null;
         row.CanRepair = idle && item.Repair is not null;
+        row.CanUpdate = idle && update is not null && _updateQueue is null;
     }
 
     private string SummaryOf(AppSnapshot snapshot)
@@ -633,10 +765,15 @@ public sealed class AppList : ObservableObject, IDisposable
         var problems = items.Count(i => i.Problem is not null && (_showComponents || !AppText.IsComponent(i)));
         var parts = new List<string> { Plural(items.Count - components, "app", "apps") };
         parts.Add(problems > 0 ? $"{Format.Number(problems)} to check" : "nothing to check");
+        var updates = items.Count(i => UpdateFor(i) is not null);
+        if (updates > 0)
+            parts.Insert(1, Plural(updates, "update", "updates"));
         if (components > 0)
             parts.Add(_showComponents ? $"{Format.Number(components)} components and updates" : $"{Format.Number(components)} components and updates hidden");
         if (snapshot.IsReading || _isScanning)
             parts.Add("reading…");
+        else if (_isChecking)
+            parts.Add("looking for updates…");
         return string.Join(" · ", parts);
     }
 
@@ -667,6 +804,8 @@ public sealed class AppList : ObservableObject, IDisposable
             () => AskRun(Kind.Uninstall),
             () => AskRun(Kind.Modify),
             () => AskRun(Kind.Repair),
+            AskUpdate,
+            OpenStore,
             AskRemoveEntry,
             OpenLocation,
             ShowProcesses,
@@ -706,6 +845,10 @@ public sealed class AppList : ObservableObject, IDisposable
         details.CanUninstall = idle && item.Uninstall is not null;
         details.CanModify = idle && item.Modify is not null;
         details.CanRepair = idle && item.Repair is not null;
+        var update = UpdateFor(item);
+        details.UpdateText = update is null ? string.Empty : $"Update to {update.Available}";
+        details.CanUpdate = idle && update is not null && _updateQueue is null;
+        details.HasStoreLink = update is null && item.Group == AppGroup.Packaged && item.InstalledWith.StartsWith("Microsoft Store", StringComparison.Ordinal);
         details.CanRemoveEntry = idle && item.Entry is not null && item.Problem is not null;
         details.NeedsElevation = details.CanRemoveEntry && item.Entry!.NeedsAdmin && !Elevation.IsElevated;
         details.Locked = item.Uninstall is null ? item.Locked ?? "This can't be uninstalled from here." : string.Empty;
@@ -721,6 +864,8 @@ public sealed class AppList : ObservableObject, IDisposable
             facts.Add(new AppFact("Architecture", architecture));
         if (item.Location is { } folder)
             facts.Add(new AppFact("Location", folder));
+        if (update is not null)
+            facts.Add(new AppFact("Update", $"{update.Available}, from {update.Updater} ({update.Package}{(update.Source is { } source && !source.Equals(update.Updater, StringComparison.OrdinalIgnoreCase) ? $", {source}" : string.Empty)})"));
         if (item.Website is { } website)
             facts.Add(new AppFact("Website", website));
         facts.AddRange(item.Facts);
@@ -934,6 +1079,116 @@ public sealed class AppList : ObservableObject, IDisposable
         }, features);
     }
 
+    /// <summary>The Store's Downloads and updates page; a fixed address, nothing from the registry.</summary>
+    private void OpenStore()
+    {
+        try
+        {
+            using var _ = Process.Start(new ProcessStartInfo("ms-windows-store://downloadsandupdates") { UseShellExecute = true });
+        }
+        catch (Exception ex) when (ex is System.ComponentModel.Win32Exception or InvalidOperationException)
+        {
+            Say("Couldn't open the Microsoft Store.", isError: true);
+        }
+    }
+
+    /// <summary>Updating asks first only when the app is running: its installer may close it.</summary>
+    private void AskUpdate()
+    {
+        if (_selected?.Item is not { } item || UpdateFor(item) is not { } update || _updateQueue is not null)
+            return;
+
+        if (_details?.IsRunning == true)
+        {
+            Ask($"Update {item.Name}?",
+                $"{update.Updater} installs version {update.Available}. {item.Name} is running: its installer may close it, or ask you to, and some need a restart to finish.",
+                null, "Update", "IconDownload", danger: false, () => StartUpdate(item, update, null));
+            return;
+        }
+
+        StartUpdate(item, update, null);
+    }
+
+    /// <param name="next">While updating all: what to do once this one is done, told whether it worked.</param>
+    private void StartUpdate(AppItem item, AppUpdate update, Action<bool>? next)
+    {
+        Run(item.Id, $"Updating {item.Name} to {update.Available} with {update.Updater}… its installer may open a window.",
+            () => AppActions.Run(update.Action), outcome =>
+            {
+                if (!outcome.Succeeded)
+                    return outcome.Failure!;
+                var restart = outcome.NeedsRestart ? " Restart Windows to finish." : string.Empty;
+                return $"{update.Updater} has finished updating {item.Name}.{restart}";
+            }, features: false, after: outcome =>
+            {
+                if (next is not null)
+                    next(outcome.Succeeded);
+                else
+                    _checkWanted = true; // Its version moves on once it's read again; then look for what's newer.
+            });
+    }
+
+    private void AskUpdateAll()
+    {
+        if (_latest is not { } snapshot || _updateQueue is not null)
+            return;
+
+        var pending = new List<(AppItem, AppUpdate)>();
+        foreach (var item in snapshot.Items.OrderBy(i => i.Name, StringComparer.CurrentCultureIgnoreCase))
+        {
+            if (UpdateFor(item) is { } update)
+                pending.Add((item, update));
+        }
+
+        if (pending.Count == 0)
+            return;
+
+        var updaters = string.Join(", ", pending.Select(p => p.Item2.Updater).Distinct());
+        Ask($"Update {Plural(pending.Count, "app", "apps")}?",
+            $"Each is updated in turn by {updaters}, in its own window. Installers may ask for administrator rights, and close apps that are running. You can stop after the one that's updating.",
+            null, "Update all", "IconDownload", danger: false, () =>
+            {
+                _updateQueue = new Queue<(AppItem, AppUpdate)>(pending);
+                _updateTotal = pending.Count;
+                _updateFailures = [];
+                _stopUpdating = false;
+                UpdatesChanged();
+                Render();
+                UpdateNext();
+            });
+    }
+
+    private void UpdateNext()
+    {
+        if (_updateQueue is not { } queue)
+            return;
+
+        if (queue.Count == 0 || _stopUpdating)
+        {
+            var done = _updateTotal - queue.Count - _updateFailures.Count;
+            var stopped = queue.Count > 0 ? $" Stopped with {Plural(queue.Count, "update", "updates")} left." : string.Empty;
+            Notice = _updateFailures.Count == 0
+                ? $"Updated {Plural(done, "app", "apps")}.{stopped}"
+                : $"Updated {Format.Number(done)} of {Plural(_updateTotal, "app", "apps")}.{stopped} Not updated: {string.Join(", ", _updateFailures)}.";
+            _updateQueue = null;
+            _stopUpdating = false;
+            _checkWanted = true;
+            UpdatesChanged();
+            Render();
+            Refresh(readFeatures: false);
+            return;
+        }
+
+        var (item, update) = queue.Dequeue();
+        Notice = $"Updating {Format.Number(_updateTotal - queue.Count)} of {Format.Number(_updateTotal)}: {item.Name} to {update.Available} with {update.Updater}…";
+        StartUpdate(item, update, ok =>
+        {
+            if (!ok)
+                _updateFailures.Add(item.Name);
+            UpdateNext();
+        });
+    }
+
     private void AskRemoveEntry()
     {
         if (_selected?.Item is not { Entry: { } entry } item)
@@ -976,10 +1231,12 @@ public sealed class AppList : ObservableObject, IDisposable
 
     /// <summary>Off the UI thread (uninstallers run as long as they run), then a rescan to show the result.</summary>
     /// <param name="describe">The outcome in words, on the UI thread.</param>
-    private void Run(string id, string progress, Func<AppOutcome> action, Func<AppOutcome, string> describe, bool features)
+    /// <param name="after">Called last, with the outcome (updating all goes on to the next).</param>
+    private void Run(string id, string progress, Func<AppOutcome> action, Func<AppOutcome, string> describe, bool features, Action<AppOutcome>? after = null)
     {
         _busy.Add(id);
-        Notice = string.Empty;
+        if (_updateQueue is null)
+            Notice = string.Empty;
         if (_details is { } details && details.Id == id)
         {
             details.Message = progress;
@@ -1014,13 +1271,14 @@ public sealed class AppList : ObservableObject, IDisposable
                     if (_selected?.Item is { } item)
                         ReadFolder(shown, item);
                 }
-                else if (!outcome.Succeeded)
+                else if (!outcome.Succeeded && _updateQueue is null)
                 {
                     Notice = text;
                 }
 
                 Render();
                 Refresh(features);
+                after?.Invoke(outcome);
             });
         });
     }

@@ -1,6 +1,6 @@
 <!--
-  Apps page: title and counts, a toolbar (all, recent, to check; search; components; refresh;
-  grouped or list), a callout for what needs administrator rights, then the table with the
+  Apps page: title and counts, a toolbar (all, updates, recent, to check; search; components;
+  refresh; update all; grouped or list), a callout for what needs administrator rights, then the table with the
   selected app's details beside it. Grouped, each way of installing has a heading row that folds
   its apps away. Narrow windows show the details over the table instead (code-behind).
   Uninstalling, changing, repairing and removing an entry ask first in a dialog over the page.
@@ -54,6 +54,13 @@
 
               <StackPanel Spacing="10" IsEnabled="{Binding IsIdle}">
                 <WrapPanel ItemSpacing="8" LineSpacing="8">
+                  <Button Theme="{StaticResource SoftButton}" Command="{Binding UpdateCommand}" IsVisible="{Binding HasUpdate}"
+                          IsEnabled="{Binding CanUpdate}" ToolTip.Tip="Install the newer version with the updater that found it">
+                    <StackPanel Orientation="Horizontal" Spacing="6">
+                      <ctl:Icon Width="14" Height="14" Data="{StaticResource IconDownload}" />
+                      <TextBlock Text="{Binding UpdateText}" VerticalAlignment="Center" />
+                    </StackPanel>
+                  </Button>
                   <Button Theme="{StaticResource DangerButton}" Command="{Binding UninstallCommand}" IsEnabled="{Binding CanUninstall}"
                           ToolTip.Tip="Remove it the way it was installed">
                     <StackPanel Orientation="Horizontal" Spacing="6">
@@ -149,6 +156,13 @@
                 <ctl:CapsText Classes="label" Value="Details" />
                 <ItemsControl ItemsSource="{Binding Facts}" ItemTemplate="{StaticResource FactTemplate}" />
                 <WrapPanel ItemSpacing="16" LineSpacing="4" Margin="0,4,0,0">
+                  <Button Theme="{StaticResource LinkButton}" Command="{Binding OpenStoreCommand}" IsVisible="{Binding HasStoreLink}"
+                          ToolTip.Tip="Store apps update through the Microsoft Store: open its Downloads and updates page">
+                    <StackPanel Orientation="Horizontal" Spacing="4">
+                      <ctl:Icon Width="14" Height="14" Data="{StaticResource IconDownload}" />
+                      <TextBlock Text="Updates in Microsoft Store" FontSize="{StaticResource SlTextSmall}" VerticalAlignment="Center" />
+                    </StackPanel>
+                  </Button>
                   <Button Theme="{StaticResource LinkButton}" Command="{Binding OpenWebsiteCommand}" IsVisible="{Binding HasWebsite}"
                           ToolTip.Tip="Open the publisher's page in the browser">
                     <StackPanel Orientation="Horizontal" Spacing="4">
@@ -230,6 +244,8 @@
         <StackPanel Orientation="Horizontal" Spacing="4" VerticalAlignment="Center" AutomationProperties.Name="Show">
           <RadioButton Theme="{StaticResource SegmentButton}" GroupName="AppsShow" Content="All"
                        IsChecked="{Binding IsShowAll}" ToolTip.Tip="Every installed app" />
+          <RadioButton Theme="{StaticResource SegmentButton}" GroupName="AppsShow" Content="{Binding UpdatesSegmentText}"
+                       IsChecked="{Binding IsShowUpdates}" ToolTip.Tip="Apps winget, Chocolatey or Scoop have a newer version of" />
           <RadioButton Theme="{StaticResource SegmentButton}" GroupName="AppsShow" Content="Recent"
                        IsChecked="{Binding IsShowRecent}" ToolTip.Tip="Installed in the last 30 days" />
           <RadioButton Theme="{StaticResource SegmentButton}" GroupName="AppsShow" Content="To check"
@@ -263,6 +279,23 @@
             <TextBlock Text="Refresh" VerticalAlignment="Center" />
           </StackPanel>
         </Button>
+
+        <StackPanel Grid.Column="4" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+          <Button Theme="{StaticResource SoftButton}" Command="{Binding UpdateAllCommand}" IsVisible="{Binding HasUpdates}"
+                  IsEnabled="{Binding CanUpdateAll}" ToolTip.Tip="Update every app that has a newer version, one after another">
+            <StackPanel Orientation="Horizontal" Spacing="6">
+              <ctl:Icon Width="14" Height="14" Data="{StaticResource IconDownload}" />
+              <TextBlock Text="{Binding UpdateAllText}" VerticalAlignment="Center" />
+            </StackPanel>
+          </Button>
+          <Button Theme="{StaticResource SoftButton}" Command="{Binding StopUpdatingCommand}" IsVisible="{Binding IsUpdatingAll}"
+                  IsEnabled="{Binding CanStopUpdating}" ToolTip.Tip="Stop once the app that's updating now is done">
+            <StackPanel Orientation="Horizontal" Spacing="6">
+              <ctl:Icon Width="14" Height="14" Data="{StaticResource IconStop}" />
+              <TextBlock Text="Stop updating" VerticalAlignment="Center" />
+            </StackPanel>
+          </Button>
+        </StackPanel>
 
         <StackPanel Grid.Column="5" Orientation="Horizontal" Spacing="4" VerticalAlignment="Center" AutomationProperties.Name="Layout">
           <RadioButton Theme="{StaticResource SegmentButton}" GroupName="AppsLayout" Content="Groups"
@@ -332,6 +365,9 @@
                                     Foreground="{StaticResource SlTextSecondary}" />
                           <TextBlock Text="{Binding Name}" FontWeight="SemiBold" VerticalAlignment="Center" />
                           <TextBlock Classes="caption" Text="{Binding CountText}" VerticalAlignment="Center" />
+                          <Border Classes="badge info" Padding="4,0" VerticalAlignment="Center" IsVisible="{Binding HasUpdates}">
+                            <TextBlock Text="Updates" FontSize="{StaticResource SlTextLabel}" />
+                          </Border>
                           <Border Classes="badge warning" Padding="4,0" VerticalAlignment="Center" IsVisible="{Binding HasProblem}">
                             <TextBlock Text="Check these" FontSize="{StaticResource SlTextLabel}" />
                           </Border>
@@ -345,6 +381,7 @@
                             Command="{Binding SelectCommand}" AutomationProperties.Name="{Binding AccessibleName}">
                       <Button.ContextMenu>
                         <ContextMenu>
+                          <MenuItem Header="Update" Command="{Binding UpdateCommand}" IsVisible="{Binding HasUpdate}" IsEnabled="{Binding CanUpdate}" />
                           <MenuItem Header="{Binding UninstallText}" Command="{Binding UninstallCommand}" IsEnabled="{Binding CanUninstall}" />
                           <MenuItem Header="Change…" Command="{Binding ModifyCommand}" IsVisible="{Binding CanModify}" />
                           <MenuItem Header="Repair…" Command="{Binding RepairCommand}" IsVisible="{Binding CanRepair}" />
@@ -354,9 +391,13 @@
                         </ContextMenu>
                       </Button.ContextMenu>
                       <Grid ColumnDefinitions="2*,*,96,88,72,128" ColumnSpacing="16">
-                        <Grid ColumnDefinitions="*,Auto" VerticalAlignment="Center">
+                        <Grid ColumnDefinitions="*,Auto,Auto" VerticalAlignment="Center">
                           <TextBlock Classes="cell name" Text="{Binding Name}" ToolTip.Tip="{Binding ToolTip}" />
-                          <Border Grid.Column="1" Classes="badge warning" Padding="4,0" Margin="6,0,0,0" VerticalAlignment="Center"
+                          <Border Grid.Column="1" Classes="badge info" Padding="4,0" Margin="6,0,0,0" VerticalAlignment="Center"
+                                  IsVisible="{Binding HasUpdate}">
+                            <TextBlock Text="{Binding UpdateText}" FontSize="{StaticResource SlTextLabel}" />
+                          </Border>
+                          <Border Grid.Column="2" Classes="badge warning" Padding="4,0" Margin="6,0,0,0" VerticalAlignment="Center"
                                   IsVisible="{Binding HasProblem}">
                             <TextBlock Text="{Binding ProblemText}" FontSize="{StaticResource SlTextLabel}" />
                           </Border>

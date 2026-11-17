@@ -112,7 +112,8 @@ internal abstract record AppAction;
 /// </summary>
 /// <param name="Elevate">Ask for administrator rights at start (machine-wide setup programs that may not ask themselves).</param>
 /// <param name="IsMsi">msiexec: its exit code says what happened.</param>
-internal sealed record CommandAction(string Program, string Arguments, bool Elevate, bool IsMsi = false) : AppAction
+/// <param name="IsWinget">winget: its exit code says what happened.</param>
+internal sealed record CommandAction(string Program, string Arguments, bool Elevate, bool IsMsi = false, bool IsWinget = false) : AppAction
 {
     public string CommandLine => Arguments.Length > 0 ? $"{Quote(Program)} {Arguments}" : Quote(Program);
 
