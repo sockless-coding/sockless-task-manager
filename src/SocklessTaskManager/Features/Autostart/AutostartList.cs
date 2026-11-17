@@ -661,7 +661,7 @@ public sealed class AutostartList : ObservableObject
 
     private void OpenRegistry()
     {
-        if (_selected?.Entry?.Item.RegistryKey is { } key && AutostartChanges.OpenInRegistryEditor(key) is { } failure)
+        if (_selected?.Entry?.Item.RegistryKey is { } key && Backups.OpenInRegistryEditor(key) is { } failure)
             Say(failure, isError: true);
     }
 

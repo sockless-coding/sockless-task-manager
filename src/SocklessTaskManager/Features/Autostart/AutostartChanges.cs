@@ -1,9 +1,9 @@
 using System.Diagnostics;
-using System.Globalization;
 using System.Runtime.InteropServices;
 using System.Security;
 using System.Text;
 using Microsoft.Win32;
+using Sockless.TaskManager.Core;
 
 namespace Sockless.TaskManager.Features.Autostart;
 
@@ -19,8 +19,7 @@ internal static partial class AutostartChanges
     private const string ApprovedRoot = @"Software\Microsoft\Windows\CurrentVersion\Explorer\StartupApproved";
     private const string NeedsAdmin = "Windows refused: changing this needs administrator rights.";
 
-    public static string BackupFolder { get; } = Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Sockless Task Manager", "Autostart backups");
+    public static string BackupFolder { get; } = Backups.Folder("Autostart backups");
 
     public static string? SetEnabled(AutostartTarget target, bool enabled)
     {
@@ -83,33 +82,31 @@ internal static partial class AutostartChanges
             switch (target)
             {
                 case RegistryValueTarget v:
-                    backup = SaveReg(name, ExportValue(v.Hive, v.Key, v.ValueName));
+                    backup = Backups.SaveReg(BackupFolder, name, Backups.ExportValue(v.Hive, v.Key, v.ValueName));
                     using (var key = AutostartRegistry.Open(v.Hive, v.Key, writable: true) ?? throw new UnauthorizedAccessException())
                         key.DeleteValue(v.ValueName, throwOnMissingValue: false);
                     DropEmptyDisabledKey(v.Hive, v.Key);
                     return null;
 
                 case RegistryKeyTarget k:
-                    backup = SaveReg(name, ExportKey(k.Hive, k.Key));
+                    backup = Backups.SaveReg(BackupFolder, name, Backups.ExportKey(k.Hive, k.Key));
                     using (var root = RegistryKey.OpenBaseKey(k.Hive, RegistryView.Registry64))
                         root.DeleteSubKeyTree(k.Key, throwOnMissingSubKey: false);
                     return null;
 
                 case ListItemTarget l:
-                    backup = SaveReg(name, ExportValue(l.Hive, l.Key, l.ValueName));
+                    backup = Backups.SaveReg(BackupFolder, name, Backups.ExportValue(l.Hive, l.Key, l.ValueName));
                     return RemoveListItem(l);
 
                 case FileTarget f:
-                    Directory.CreateDirectory(BackupFolder);
-                    backup = Unique(Path.Combine(BackupFolder, $"{Stamp()} {Path.GetFileName(f.Path)}"));
+                    backup = Backups.NewFile(BackupFolder, Path.GetFileNameWithoutExtension(f.Path), Path.GetExtension(f.Path));
                     File.Move(f.Path, backup);
                     return null;
 
                 case TaskTarget t:
                     if (t.Xml.Length > 0)
                     {
-                        Directory.CreateDirectory(BackupFolder);
-                        backup = Unique(Path.Combine(BackupFolder, $"{Stamp()} {Safe(name)}.xml"));
+                        backup = Backups.NewFile(BackupFolder, name, ".xml");
                         File.WriteAllText(backup, t.Xml, Encoding.Unicode);
                     }
 
@@ -130,27 +127,6 @@ internal static partial class AutostartChanges
         {
             Debug.WriteLine($"Autostart removal failed: {ex}");
             return "Windows couldn't remove it.";
-        }
-    }
-
-    /// <summary>Opens Registry Editor at the key, through the LastKey it reopens at.</summary>
-    public static string? OpenInRegistryEditor(string displayKey)
-    {
-        var full = displayKey
-            .Replace(@"HKCU\", @"HKEY_CURRENT_USER\", StringComparison.Ordinal)
-            .Replace(@"HKLM\", @"HKEY_LOCAL_MACHINE\", StringComparison.Ordinal)
-            .Replace(@"HKCR\", @"HKEY_CLASSES_ROOT\", StringComparison.Ordinal);
-        try
-        {
-            using (var applet = Registry.CurrentUser.CreateSubKey(@"Software\Microsoft\Windows\CurrentVersion\Applets\Regedit"))
-                applet.SetValue("LastKey", $@"Computer\{full}");
-
-            using var _ = Process.Start(new ProcessStartInfo("regedit.exe") { UseShellExecute = true });
-            return null;
-        }
-        catch (Exception ex) when (ex is System.ComponentModel.Win32Exception or InvalidOperationException or UnauthorizedAccessException or SecurityException or IOException)
-        {
-            return "Couldn't open Registry Editor.";
         }
     }
 
@@ -361,90 +337,6 @@ internal static partial class AutostartChanges
         1072 => "The service is being uninstalled.",
         _ => $"Windows couldn't change the service (error {error}).",
     };
-
-    // ---------- Backups ----------
-
-    private static string? SaveReg(string name, string body)
-    {
-        Directory.CreateDirectory(BackupFolder);
-        var path = Unique(Path.Combine(BackupFolder, $"{Stamp()} {Safe(name)}.reg"));
-        File.WriteAllText(path, "Windows Registry Editor Version 5.00\r\n\r\n" + body, Encoding.Unicode);
-        return path;
-    }
-
-    private static string ExportValue(RegistryHive hive, string path, string name)
-    {
-        using var key = AutostartRegistry.Open(hive, path) ?? throw new IOException("It's no longer there.");
-        return $"[{AutostartRegistry.LongHiveName(hive)}\\{path}]\r\n{Line(key, name)}\r\n";
-    }
-
-    private static string ExportKey(RegistryHive hive, string path)
-    {
-        using var key = AutostartRegistry.Open(hive, path) ?? throw new IOException("It's no longer there.");
-        var text = new StringBuilder();
-        Export(key, $@"{AutostartRegistry.LongHiveName(hive)}\{path}", text);
-        return text.ToString();
-    }
-
-    private static void Export(RegistryKey key, string fullPath, StringBuilder text)
-    {
-        text.Append('[').Append(fullPath).Append("]\r\n");
-        foreach (var name in key.GetValueNames())
-            text.Append(Line(key, name)).Append("\r\n");
-        text.Append("\r\n");
-
-        foreach (var name in key.GetSubKeyNames())
-        {
-            using var child = key.OpenSubKey(name);
-            if (child is not null)
-                Export(child, $@"{fullPath}\{name}", text);
-        }
-    }
-
-    /// <summary>One value in Registry Editor's export format.</summary>
-    private static string Line(RegistryKey key, string name)
-    {
-        var label = name.Length == 0 ? "@" : $"\"{Escape(name)}\"";
-        var value = key.GetValue(name, null, RegistryValueOptions.DoNotExpandEnvironmentNames);
-        return key.GetValueKind(name) switch
-        {
-            RegistryValueKind.String => $"{label}=\"{Escape((string)value!)}\"",
-            RegistryValueKind.DWord => $"{label}=dword:{(uint)(int)value!:x8}",
-            RegistryValueKind.ExpandString => $"{label}=hex(2):{Hex(Encoding.Unicode.GetBytes((string)value! + "\0"))}",
-            RegistryValueKind.MultiString => $"{label}=hex(7):{Hex(Encoding.Unicode.GetBytes(string.Concat(((string[])value!).Select(s => s + "\0")) + "\0"))}",
-            RegistryValueKind.QWord => $"{label}=hex(b):{Hex(BitConverter.GetBytes((long)value!))}",
-            _ => $"{label}=hex:{Hex(value as byte[] ?? [])}",
-        };
-    }
-
-    private static string Escape(string text) => text.Replace(@"\", @"\\", StringComparison.Ordinal).Replace("\"", "\\\"", StringComparison.Ordinal);
-
-    private static string Hex(byte[] bytes) => string.Join(",", bytes.Select(b => b.ToString("x2", CultureInfo.InvariantCulture)));
-
-    private static string Stamp() => DateTime.Now.ToString("yyyy-MM-dd HHmmss", CultureInfo.InvariantCulture);
-
-    private static string Safe(string name)
-    {
-        var invalid = Path.GetInvalidFileNameChars();
-        var safe = new string([.. name.Select(c => invalid.Contains(c) ? '_' : c)]).Trim();
-        return safe.Length > 80 ? safe[..80] : safe.Length == 0 ? "entry" : safe;
-    }
-
-    private static string Unique(string path)
-    {
-        if (!File.Exists(path))
-            return path;
-
-        var folder = Path.GetDirectoryName(path)!;
-        var stem = Path.GetFileNameWithoutExtension(path);
-        var extension = Path.GetExtension(path);
-        for (var i = 2; ; i++)
-        {
-            var candidate = Path.Combine(folder, $"{stem} ({i}){extension}");
-            if (!File.Exists(candidate))
-                return candidate;
-        }
-    }
 
     [LibraryImport("advapi32.dll", SetLastError = true, StringMarshalling = StringMarshalling.Utf16)]
     private static partial nint OpenSCManagerW(string? machine, string? database, uint access);

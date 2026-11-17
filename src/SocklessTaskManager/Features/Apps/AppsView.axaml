@@ -1,0 +1,432 @@
+<!--
+  Apps page: title and counts, a toolbar (all, recent, to check; search; components; refresh;
+  grouped or list), a callout for what needs administrator rights, then the table with the
+  selected app's details beside it. Grouped, each way of installing has a heading row that folds
+  its apps away. Narrow windows show the details over the table instead (code-behind).
+  Uninstalling, changing, repairing and removing an entry ask first in a dialog over the page.
+-->
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:ctl="using:Sockless.TaskManager.Controls"
+             xmlns:apps="using:Sockless.TaskManager.Features.Apps"
+             x:Class="Sockless.TaskManager.Features.Apps.AppsView"
+             x:DataType="apps:AppList">
+
+  <UserControl.Resources>
+    <DataTemplate x:Key="SortHeaderTemplate" x:DataType="apps:AppColumn">
+      <Button Theme="{StaticResource SortHeader}" Classes.active="{Binding IsActive}"
+              Command="{Binding SortCommand}" AutomationProperties.Name="{Binding AccessibleName}">
+        <StackPanel Orientation="Horizontal" Spacing="4">
+          <TextBlock Text="{Binding Title}" />
+          <ctl:Icon Width="12" Height="12" VerticalAlignment="Center" Data="{Binding Glyph}" IsVisible="{Binding IsActive}" />
+        </StackPanel>
+      </Button>
+    </DataTemplate>
+
+    <DataTemplate x:Key="FactTemplate" x:DataType="apps:AppFact">
+      <Grid ColumnDefinitions="112,*" ColumnSpacing="8" Margin="0,3">
+        <TextBlock Classes="caption" Text="{Binding Label}" TextWrapping="Wrap" />
+        <SelectableTextBlock Grid.Column="1" Text="{Binding Value}" TextWrapping="Wrap"
+                             FontFamily="{StaticResource SlFontMono}" FontSize="{StaticResource SlTextSmall}"
+                             SelectionBrush="{StaticResource SlAccentTint30}" />
+      </Grid>
+    </DataTemplate>
+
+    <!-- The details pane (apps:AppDetails). -->
+    <DataTemplate x:Key="DetailsTemplate" x:DataType="apps:AppDetails">
+      <Border Classes="card" Padding="0" ClipToBounds="True">
+        <DockPanel>
+          <Border DockPanel.Dock="Top" Padding="20,16" BorderBrush="{StaticResource SlBorder}" BorderThickness="0,0,0,1">
+            <StackPanel Spacing="14">
+              <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="8">
+                <StackPanel Spacing="2">
+                  <TextBlock Classes="section-title" Text="{Binding Name}" TextWrapping="Wrap" />
+                  <TextBlock Classes="caption" Text="{Binding Subtitle}" TextWrapping="Wrap" IsVisible="{Binding HasSubtitle}" />
+                </StackPanel>
+                <Border Grid.Column="1" Classes="badge warning" VerticalAlignment="Top" IsVisible="{Binding HasProblem}">
+                  <TextBlock Text="{Binding ProblemText}" />
+                </Border>
+                <Button Grid.Column="2" Theme="{StaticResource IconButton}" VerticalAlignment="Top"
+                        Command="{Binding CloseCommand}" AutomationProperties.Name="Close details" ToolTip.Tip="Close (Esc)">
+                  <ctl:Icon Width="14" Height="14" Data="{StaticResource IconClose}" />
+                </Button>
+              </Grid>
+
+              <StackPanel Spacing="10" IsEnabled="{Binding IsIdle}">
+                <WrapPanel ItemSpacing="8" LineSpacing="8">
+                  <Button Theme="{StaticResource DangerButton}" Command="{Binding UninstallCommand}" IsEnabled="{Binding CanUninstall}"
+                          ToolTip.Tip="Remove it the way it was installed">
+                    <StackPanel Orientation="Horizontal" Spacing="6">
+                      <ctl:Icon Width="14" Height="14" Data="{StaticResource IconTrash}" />
+                      <TextBlock Text="{Binding UninstallText}" VerticalAlignment="Center" />
+                    </StackPanel>
+                  </Button>
+                  <Button Theme="{StaticResource SoftButton}" Command="{Binding ModifyCommand}" IsVisible="{Binding CanModify}"
+                          ToolTip.Tip="Open its installer to add or remove parts of it">
+                    <StackPanel Orientation="Horizontal" Spacing="6">
+                      <ctl:Icon Width="14" Height="14" Data="{StaticResource IconPencil}" />
+                      <TextBlock Text="Change" VerticalAlignment="Center" />
+                    </StackPanel>
+                  </Button>
+                  <Button Theme="{StaticResource SoftButton}" Command="{Binding RepairCommand}" IsVisible="{Binding CanRepair}"
+                          ToolTip.Tip="Have its installer put back missing or damaged files">
+                    <StackPanel Orientation="Horizontal" Spacing="6">
+                      <ctl:Icon Width="14" Height="14" Data="{StaticResource IconWrench}" />
+                      <TextBlock Text="Repair" VerticalAlignment="Center" />
+                    </StackPanel>
+                  </Button>
+                  <Button Theme="{StaticResource SoftButton}" Command="{Binding OpenLocationCommand}" IsEnabled="{Binding HasLocation}"
+                          ToolTip.Tip="Open the folder it's installed in">
+                    <StackPanel Orientation="Horizontal" Spacing="6">
+                      <ctl:Icon Width="14" Height="14" Data="{StaticResource IconFolderOpen}" />
+                      <TextBlock Text="Open location" VerticalAlignment="Center" />
+                    </StackPanel>
+                  </Button>
+                  <Button Theme="{StaticResource DangerButton}" Command="{Binding RemoveEntryCommand}" IsVisible="{Binding CanRemoveEntry}"
+                          ToolTip.Tip="Delete the left-over entry from the uninstall registry, keeping a backup">
+                    <StackPanel Orientation="Horizontal" Spacing="6">
+                      <ctl:Icon Width="14" Height="14" Data="{StaticResource IconTrash}" />
+                      <TextBlock Text="Remove entry" VerticalAlignment="Center" />
+                    </StackPanel>
+                  </Button>
+                </WrapPanel>
+
+                <TextBlock Classes="caption" TextWrapping="Wrap" Text="{Binding Locked}" IsVisible="{Binding IsLocked}" />
+
+                <StackPanel Spacing="4" IsVisible="{Binding NeedsElevation}">
+                  <TextBlock Classes="caption" TextWrapping="Wrap" Text="Removing an entry for everyone needs administrator rights." />
+                  <Button Theme="{StaticResource LinkButton}" Command="{Binding RestartElevatedCommand}" HorizontalAlignment="Left">
+                    <StackPanel Orientation="Horizontal" Spacing="4">
+                      <ctl:Icon Width="14" Height="14" Data="{StaticResource IconShield}" />
+                      <TextBlock Text="Restart as administrator" FontSize="{StaticResource SlTextSmall}" VerticalAlignment="Center" />
+                    </StackPanel>
+                  </Button>
+                </StackPanel>
+              </StackPanel>
+
+              <Border Classes="callout" Classes.danger="{Binding MessageIsError}" IsVisible="{Binding HasMessage}">
+                <Grid ColumnDefinitions="Auto,*" ColumnSpacing="8">
+                  <ctl:Icon Classes="status" Width="16" Height="16" VerticalAlignment="Top"
+                            Data="{StaticResource IconWarning}" IsVisible="{Binding MessageIsError}" />
+                  <TextBlock Grid.Column="1" Text="{Binding Message}" TextWrapping="Wrap" FontSize="{StaticResource SlTextSmall}" />
+                </Grid>
+              </Border>
+            </StackPanel>
+          </Border>
+
+          <ScrollViewer HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
+            <StackPanel Spacing="16" Margin="20,14,20,20">
+              <Border Classes="callout warning" IsVisible="{Binding HasProblem}">
+                <Grid ColumnDefinitions="Auto,*" ColumnSpacing="8">
+                  <ctl:Icon Classes="status" Width="16" Height="16" VerticalAlignment="Top" Data="{StaticResource IconWarning}" />
+                  <StackPanel Grid.Column="1" Spacing="2">
+                    <TextBlock Text="{Binding ProblemText}" FontWeight="SemiBold" FontSize="{StaticResource SlTextSmall}" />
+                    <TextBlock Text="{Binding ProblemExplanation}" TextWrapping="Wrap" FontSize="{StaticResource SlTextSmall}" />
+                  </StackPanel>
+                </Grid>
+              </Border>
+
+              <Border Classes="callout info" IsVisible="{Binding IsRunning}">
+                <Grid ColumnDefinitions="Auto,*" ColumnSpacing="8">
+                  <ctl:Icon Classes="status" Width="16" Height="16" VerticalAlignment="Top" Data="{StaticResource IconProcesses}" />
+                  <StackPanel Grid.Column="1" Spacing="4">
+                    <TextBlock Text="{Binding RunningText}" TextWrapping="Wrap" FontSize="{StaticResource SlTextSmall}" />
+                    <Button Theme="{StaticResource LinkButton}" Command="{Binding ShowProcessesCommand}" HorizontalAlignment="Left"
+                            ToolTip.Tip="Open the Processes page, filtered to what runs from its folder">
+                      <StackPanel Orientation="Horizontal" Spacing="4">
+                        <TextBlock Text="Show in Processes" FontSize="{StaticResource SlTextSmall}" VerticalAlignment="Center" />
+                        <ctl:Icon Width="14" Height="14" Data="{StaticResource IconChevronRight}" />
+                      </StackPanel>
+                    </Button>
+                  </StackPanel>
+                </Grid>
+              </Border>
+
+              <TextBlock Text="{Binding About}" TextWrapping="Wrap"
+                         Foreground="{StaticResource SlTextSecondary}" FontSize="{StaticResource SlTextSmall}" />
+
+              <StackPanel Spacing="6">
+                <ctl:CapsText Classes="label" Value="Details" />
+                <ItemsControl ItemsSource="{Binding Facts}" ItemTemplate="{StaticResource FactTemplate}" />
+                <WrapPanel ItemSpacing="16" LineSpacing="4" Margin="0,4,0,0">
+                  <Button Theme="{StaticResource LinkButton}" Command="{Binding OpenWebsiteCommand}" IsVisible="{Binding HasWebsite}"
+                          ToolTip.Tip="Open the publisher's page in the browser">
+                    <StackPanel Orientation="Horizontal" Spacing="4">
+                      <ctl:Icon Width="14" Height="14" Data="{StaticResource IconGlobe}" />
+                      <TextBlock Text="Website" FontSize="{StaticResource SlTextSmall}" VerticalAlignment="Center" />
+                    </StackPanel>
+                  </Button>
+                  <Button Theme="{StaticResource LinkButton}" Command="{Binding OpenHelpCommand}" IsVisible="{Binding HasHelp}"
+                          ToolTip.Tip="Open the publisher's help page in the browser">
+                    <StackPanel Orientation="Horizontal" Spacing="4">
+                      <ctl:Icon Width="14" Height="14" Data="{StaticResource IconGlobe}" />
+                      <TextBlock Text="Support" FontSize="{StaticResource SlTextSmall}" VerticalAlignment="Center" />
+                    </StackPanel>
+                  </Button>
+                  <Button Theme="{StaticResource LinkButton}" Command="{Binding CopyCommandCommand}" IsVisible="{Binding HasCommand}"
+                          ToolTip.Tip="Copy the command that uninstalls it">
+                    <StackPanel Orientation="Horizontal" Spacing="4">
+                      <ctl:Icon Width="14" Height="14" Data="{StaticResource IconCopy}" />
+                      <TextBlock Text="Copy uninstall command" FontSize="{StaticResource SlTextSmall}" VerticalAlignment="Center" />
+                    </StackPanel>
+                  </Button>
+                  <Button Theme="{StaticResource LinkButton}" Command="{Binding OpenRegistryCommand}" IsVisible="{Binding HasRegistry}"
+                          ToolTip.Tip="Open Registry Editor at its entry">
+                    <StackPanel Orientation="Horizontal" Spacing="4">
+                      <TextBlock Text="Open in Registry Editor" FontSize="{StaticResource SlTextSmall}" VerticalAlignment="Center" />
+                      <ctl:Icon Width="14" Height="14" Data="{StaticResource IconChevronRight}" />
+                    </StackPanel>
+                  </Button>
+                  <Button Theme="{StaticResource LinkButton}" Command="{Binding OpenBackupsCommand}"
+                          ToolTip.Tip="Entries removed from here, saved as .reg files">
+                    <StackPanel Orientation="Horizontal" Spacing="4">
+                      <TextBlock Text="Backups" FontSize="{StaticResource SlTextSmall}" VerticalAlignment="Center" />
+                      <ctl:Icon Width="14" Height="14" Data="{StaticResource IconChevronRight}" />
+                    </StackPanel>
+                  </Button>
+                </WrapPanel>
+              </StackPanel>
+            </StackPanel>
+          </ScrollViewer>
+        </DockPanel>
+      </Border>
+    </DataTemplate>
+  </UserControl.Resources>
+
+  <UserControl.Styles>
+    <Style Selector="TextBlock.cell">
+      <Setter Property="FontSize" Value="{StaticResource SlTextSmall}" />
+      <Setter Property="VerticalAlignment" Value="Center" />
+      <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+    </Style>
+    <Style Selector="Button.selected TextBlock.name">
+      <Setter Property="FontWeight" Value="SemiBold" />
+    </Style>
+    <Style Selector="Button.entry">
+      <Setter Property="Padding" Value="24,6" />
+    </Style>
+    <Style Selector="ItemsControl.grouped Button.entry">
+      <Setter Property="Padding" Value="48,6,24,6" />
+    </Style>
+  </UserControl.Styles>
+
+  <Panel>
+    <Grid RowDefinitions="Auto,Auto,Auto,Auto,*" Margin="{StaticResource SlContentPadding}" IsEnabled="{Binding !HasConfirmation}">
+      <StackPanel Spacing="4" Margin="0,0,0,16">
+        <TextBlock Classes="page-title" Text="Apps" />
+        <TextBlock Classes="secondary" Text="{Binding Summary}" />
+      </StackPanel>
+
+      <!-- ========== Toolbar ========== -->
+      <Grid Grid.Row="1" ColumnSpacing="16" Margin="0,0,0,12">
+        <Grid.ColumnDefinitions>
+          <ColumnDefinition Width="Auto" />
+          <ColumnDefinition Width="*" MaxWidth="300" />
+          <ColumnDefinition Width="Auto" />
+          <ColumnDefinition Width="Auto" />
+          <ColumnDefinition Width="*" />
+          <ColumnDefinition Width="Auto" />
+        </Grid.ColumnDefinitions>
+        <StackPanel Orientation="Horizontal" Spacing="4" VerticalAlignment="Center" AutomationProperties.Name="Show">
+          <RadioButton Theme="{StaticResource SegmentButton}" GroupName="AppsShow" Content="All"
+                       IsChecked="{Binding IsShowAll}" ToolTip.Tip="Every installed app" />
+          <RadioButton Theme="{StaticResource SegmentButton}" GroupName="AppsShow" Content="Recent"
+                       IsChecked="{Binding IsShowRecent}" ToolTip.Tip="Installed in the last 30 days" />
+          <RadioButton Theme="{StaticResource SegmentButton}" GroupName="AppsShow" Content="To check"
+                       IsChecked="{Binding IsShowProblems}" ToolTip.Tip="Missing uninstallers and folders, and packages that need repair" />
+        </StackPanel>
+
+        <TextBox Grid.Column="1" x:Name="Search" VerticalContentAlignment="Center"
+                 Text="{Binding SearchText}" PlaceholderText="Search by name, publisher, installer or folder"
+                 AutomationProperties.Name="Search apps" ToolTip.Tip="Search (Ctrl+F)">
+          <TextBox.InnerLeftContent>
+            <ctl:Icon Width="16" Height="16" Margin="10,0,0,0" Foreground="{StaticResource SlTextSecondary}"
+                      Data="{StaticResource IconSearch}" />
+          </TextBox.InnerLeftContent>
+          <TextBox.InnerRightContent>
+            <Button Theme="{StaticResource IconButton}" Margin="0,0,4,0" IsVisible="{Binding HasSearch}"
+                    Command="{Binding ClearSearchCommand}" AutomationProperties.Name="Clear search">
+              <ctl:Icon Width="14" Height="14" Data="{StaticResource IconClose}" />
+            </Button>
+          </TextBox.InnerRightContent>
+        </TextBox>
+
+        <ToggleButton Grid.Column="2" Theme="{StaticResource SoftToggle}" VerticalAlignment="Center" IsChecked="{Binding ShowComponents}"
+                      ToolTip.Tip="Frameworks, runtimes, parts of other apps and updates as well">
+          <TextBlock Text="Components" />
+        </ToggleButton>
+
+        <Button Grid.Column="3" Theme="{StaticResource SoftButton}" VerticalAlignment="Center" Command="{Binding RefreshCommand}"
+                IsEnabled="{Binding IsIdle}" ToolTip.Tip="Read everything again (F5)">
+          <StackPanel Orientation="Horizontal" Spacing="6">
+            <ctl:Icon Width="14" Height="14" Data="{StaticResource IconRefresh}" />
+            <TextBlock Text="Refresh" VerticalAlignment="Center" />
+          </StackPanel>
+        </Button>
+
+        <StackPanel Grid.Column="5" Orientation="Horizontal" Spacing="4" VerticalAlignment="Center" AutomationProperties.Name="Layout">
+          <RadioButton Theme="{StaticResource SegmentButton}" GroupName="AppsLayout" Content="Groups"
+                       IsChecked="{Binding IsGrouped}" ToolTip.Tip="Apps under how they were installed" />
+          <RadioButton Theme="{StaticResource SegmentButton}" GroupName="AppsLayout" Content="List"
+                       IsChecked="{Binding IsFlat}" ToolTip.Tip="Every app in one sorted list" />
+        </StackPanel>
+      </Grid>
+
+      <Border Grid.Row="2" Classes="callout info" Margin="0,0,0,12" IsVisible="{Binding ShowElevationHint}">
+        <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="10">
+          <ctl:Icon Classes="status" Width="16" Height="16" VerticalAlignment="Top" Data="{StaticResource IconShield}" />
+          <TextBlock Grid.Column="1" TextWrapping="Wrap" FontSize="{StaticResource SlTextSmall}"
+                     Text="Optional features and Windows features are listed only for an administrator. Apps installed for everyone ask for administrator rights as they uninstall." />
+          <Button Grid.Column="2" Theme="{StaticResource LinkButton}" VerticalAlignment="Top" Command="{Binding RestartElevatedCommand}">
+            <TextBlock Text="Restart as administrator" FontSize="{StaticResource SlTextSmall}" />
+          </Button>
+        </Grid>
+      </Border>
+
+      <Border Grid.Row="3" Classes="callout info" Margin="0,0,0,12" IsVisible="{Binding HasNotice}">
+        <Grid ColumnDefinitions="*,Auto" ColumnSpacing="10">
+          <TextBlock Text="{Binding Notice}" TextWrapping="Wrap" FontSize="{StaticResource SlTextSmall}" />
+          <Button Grid.Column="1" Theme="{StaticResource LinkButton}" VerticalAlignment="Top" Command="{Binding OpenBackupsCommand}">
+            <TextBlock Text="Open backups" FontSize="{StaticResource SlTextSmall}" />
+          </Button>
+        </Grid>
+      </Border>
+
+      <Grid Grid.Row="4" x:Name="Body" ColumnDefinitions="*,Auto">
+        <!-- ========== Table ========== -->
+        <Border Classes="card" Padding="0" ClipToBounds="True">
+          <ScrollViewer HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Disabled">
+            <Grid RowDefinitions="Auto,*">
+              <Border Classes="table-header">
+                <Grid ColumnDefinitions="2*,*,96,88,72,128" ColumnSpacing="16">
+                  <ContentControl Content="{Binding NameColumn}" ContentTemplate="{StaticResource SortHeaderTemplate}" />
+                  <ContentControl Grid.Column="1" Content="{Binding PublisherColumn}" ContentTemplate="{StaticResource SortHeaderTemplate}" />
+                  <ContentControl Grid.Column="2" Content="{Binding VersionColumn}" ContentTemplate="{StaticResource SortHeaderTemplate}" />
+                  <ContentControl Grid.Column="3" Content="{Binding InstalledColumn}" ContentTemplate="{StaticResource SortHeaderTemplate}" />
+                  <ContentControl Grid.Column="4" HorizontalAlignment="Right" Content="{Binding SizeColumn}" ContentTemplate="{StaticResource SortHeaderTemplate}" />
+                  <ContentControl Grid.Column="5" Content="{Binding InstalledWithColumn}" ContentTemplate="{StaticResource SortHeaderTemplate}" />
+                </Grid>
+              </Border>
+
+              <ItemsControl Grid.Row="1" ItemsSource="{Binding Items}" Classes.grouped="{Binding IsGrouped}"
+                            AutomationProperties.Name="Installed apps">
+                <ItemsControl.Template>
+                  <ControlTemplate>
+                    <ScrollViewer HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
+                      <ItemsPresenter Name="PART_ItemsPresenter" ItemsPanel="{TemplateBinding ItemsPanel}" />
+                    </ScrollViewer>
+                  </ControlTemplate>
+                </ItemsControl.Template>
+                <ItemsControl.ItemsPanel>
+                  <ItemsPanelTemplate>
+                    <VirtualizingStackPanel />
+                  </ItemsPanelTemplate>
+                </ItemsControl.ItemsPanel>
+                <ItemsControl.DataTemplates>
+                  <DataTemplate DataType="apps:AppGroupRow" x:DataType="apps:AppGroupRow">
+                    <Border BorderBrush="{StaticResource SlBorder}" BorderThickness="0,0,0,1">
+                      <Button Theme="{StaticResource TableRow}" Padding="16,9" Command="{Binding ToggleCommand}"
+                              AutomationProperties.Name="{Binding AccessibleName}" ToolTip.Tip="{Binding About}">
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                          <ctl:Icon Width="14" Height="14" VerticalAlignment="Center" Data="{Binding Glyph}"
+                                    Foreground="{StaticResource SlTextSecondary}" />
+                          <TextBlock Text="{Binding Name}" FontWeight="SemiBold" VerticalAlignment="Center" />
+                          <TextBlock Classes="caption" Text="{Binding CountText}" VerticalAlignment="Center" />
+                          <Border Classes="badge warning" Padding="4,0" VerticalAlignment="Center" IsVisible="{Binding HasProblem}">
+                            <TextBlock Text="Check these" FontSize="{StaticResource SlTextLabel}" />
+                          </Border>
+                        </StackPanel>
+                      </Button>
+                    </Border>
+                  </DataTemplate>
+
+                  <DataTemplate DataType="apps:AppRow" x:DataType="apps:AppRow">
+                    <Button Classes="entry" Theme="{StaticResource SelectableRow}" Classes.selected="{Binding IsSelected}"
+                            Command="{Binding SelectCommand}" AutomationProperties.Name="{Binding AccessibleName}">
+                      <Button.ContextMenu>
+                        <ContextMenu>
+                          <MenuItem Header="{Binding UninstallText}" Command="{Binding UninstallCommand}" IsEnabled="{Binding CanUninstall}" />
+                          <MenuItem Header="Change…" Command="{Binding ModifyCommand}" IsVisible="{Binding CanModify}" />
+                          <MenuItem Header="Repair…" Command="{Binding RepairCommand}" IsVisible="{Binding CanRepair}" />
+                          <Separator />
+                          <MenuItem Header="Open location" Command="{Binding OpenLocationCommand}" IsEnabled="{Binding HasLocation}" />
+                          <MenuItem Header="Copy name" Command="{Binding CopyNameCommand}" />
+                        </ContextMenu>
+                      </Button.ContextMenu>
+                      <Grid ColumnDefinitions="2*,*,96,88,72,128" ColumnSpacing="16">
+                        <Grid ColumnDefinitions="*,Auto" VerticalAlignment="Center">
+                          <TextBlock Classes="cell name" Text="{Binding Name}" ToolTip.Tip="{Binding ToolTip}" />
+                          <Border Grid.Column="1" Classes="badge warning" Padding="4,0" Margin="6,0,0,0" VerticalAlignment="Center"
+                                  IsVisible="{Binding HasProblem}">
+                            <TextBlock Text="{Binding ProblemText}" FontSize="{StaticResource SlTextLabel}" />
+                          </Border>
+                        </Grid>
+                        <TextBlock Grid.Column="1" Classes="cell" Text="{Binding PublisherText}" ToolTip.Tip="{Binding PublisherText}" />
+                        <TextBlock Grid.Column="2" Classes="cell" FontFamily="{StaticResource SlFontMono}"
+                                   Text="{Binding VersionText}" ToolTip.Tip="{Binding VersionText}" />
+                        <TextBlock Grid.Column="3" Classes="cell" Text="{Binding InstalledText}" />
+                        <TextBlock Grid.Column="4" Classes="cell" HorizontalAlignment="Right" FontFamily="{StaticResource SlFontMono}"
+                                   Text="{Binding SizeText}" />
+                        <TextBlock Grid.Column="5" Classes="cell" Text="{Binding InstalledWithText}" ToolTip.Tip="{Binding InstalledWithText}" />
+                      </Grid>
+                    </Button>
+                  </DataTemplate>
+                </ItemsControl.DataTemplates>
+              </ItemsControl>
+
+              <!-- Empty state (components.md): icon, what's missing, what to do. -->
+              <StackPanel Grid.Row="1" Spacing="8" Margin="24,64" HorizontalAlignment="Center" VerticalAlignment="Top">
+                <StackPanel.IsVisible>
+                  <MultiBinding Converter="{x:Static BoolConverters.And}">
+                    <Binding Path="IsEmpty" />
+                    <Binding Path="!IsLoading" />
+                  </MultiBinding>
+                </StackPanel.IsVisible>
+                <ctl:Icon Width="48" Height="48" HorizontalAlignment="Center" Foreground="{StaticResource SlTextSecondary}"
+                          Data="{StaticResource IconSearch}" />
+                <TextBlock Text="{Binding EmptyTitle}" HorizontalAlignment="Center" FontWeight="SemiBold" />
+                <TextBlock Classes="caption" Text="{Binding EmptyHint}" HorizontalAlignment="Center" />
+              </StackPanel>
+            </Grid>
+          </ScrollViewer>
+        </Border>
+
+        <ContentControl Grid.Column="1" x:Name="DetailsPane" Width="420" Margin="16,0,0,0"
+                        Content="{Binding Details}" ContentTemplate="{StaticResource DetailsTemplate}"
+                        IsVisible="{Binding HasDetails}" />
+      </Grid>
+    </Grid>
+
+    <!-- ========== Confirmation (components.md → Dialogs) ========== -->
+    <Border Background="{StaticResource SlScrim}" IsVisible="{Binding HasConfirmation}">
+      <Border Classes="dialog" Width="480" HorizontalAlignment="Center" VerticalAlignment="Center">
+        <StackPanel Spacing="16">
+          <ctl:CapsText Classes="dialog-title" Value="{Binding Confirmation.Title}" TextWrapping="Wrap" />
+          <TextBlock Text="{Binding Confirmation.Message}" TextWrapping="Wrap" />
+          <Border Classes="callout danger" IsVisible="{Binding Confirmation.HasWarning}">
+            <Grid ColumnDefinitions="Auto,*" ColumnSpacing="8">
+              <ctl:Icon Classes="status" Width="16" Height="16" VerticalAlignment="Top" Data="{StaticResource IconWarning}" />
+              <TextBlock Grid.Column="1" Text="{Binding Confirmation.Warning}" TextWrapping="Wrap" FontSize="{StaticResource SlTextSmall}" />
+            </Grid>
+          </Border>
+          <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Right">
+            <Button x:Name="ConfirmCancel" Theme="{StaticResource SoftButton}" Command="{Binding Confirmation.CancelCommand}"
+                    Content="Cancel" IsCancel="True" />
+            <Button Theme="{StaticResource DangerButton}" Command="{Binding Confirmation.ConfirmCommand}" IsVisible="{Binding ConfirmIsDanger}">
+              <StackPanel Orientation="Horizontal" Spacing="6">
+                <ctl:Icon Width="14" Height="14" Data="{Binding ConfirmIcon}" />
+                <TextBlock Text="{Binding Confirmation.ConfirmText}" VerticalAlignment="Center" />
+              </StackPanel>
+            </Button>
+            <Button Theme="{StaticResource SoftButton}" Command="{Binding Confirmation.ConfirmCommand}" IsVisible="{Binding ConfirmIsSoft}">
+              <StackPanel Orientation="Horizontal" Spacing="6">
+                <ctl:Icon Width="14" Height="14" Data="{Binding ConfirmIcon}" />
+                <TextBlock Text="{Binding Confirmation.ConfirmText}" VerticalAlignment="Center" />
+              </StackPanel>
+            </Button>
+          </StackPanel>
+        </StackPanel>
+      </Border>
+    </Border>
+  </Panel>
+</UserControl>

@@ -38,16 +38,6 @@ internal static partial class AutostartRegistry
         _ => hive.ToString(),
     };
 
-    /// <summary>Registry Editor's name for the hive, for its LastKey.</summary>
-    public static string LongHiveName(RegistryHive hive) => hive switch
-    {
-        RegistryHive.CurrentUser => "HKEY_CURRENT_USER",
-        RegistryHive.LocalMachine => "HKEY_LOCAL_MACHINE",
-        RegistryHive.ClassesRoot => "HKEY_CLASSES_ROOT",
-        RegistryHive.Users => "HKEY_USERS",
-        _ => hive.ToString(),
-    };
-
     public static string[] ValueNames(RegistryKey key)
     {
         try

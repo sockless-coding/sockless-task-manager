@@ -568,7 +568,7 @@ public sealed class ProcessList : ObservableObject, IDisposable
 
     /// <summary>
     /// Another page's question. One process: its details, in the list as it is (if it has ended
-    /// meanwhile, its ended details). A user's processes: the running list with whatever narrowed
+    /// meanwhile, its ended details). A user's (or an app folder's) processes: the running list with whatever narrowed
     /// it cleared, then the query as column filters, shown in the filter row so it's plain why the
     /// list is short and how to widen it again. <paramref name="back"/> is the page it came from.
     /// </summary>
@@ -602,6 +602,8 @@ public sealed class ProcessList : ObservableObject, IDisposable
             Filter(ProcessColumn.User, $"={user}");
         if (query.SessionId is { } session)
             Filter(ProcessColumn.Session, $"={session.ToString(CultureInfo.InvariantCulture)}");
+        if (query.Folder is { } folder)
+            Filter(ProcessColumn.Path, Path.TrimEndingDirectorySeparator(folder) + Path.DirectorySeparatorChar);
         ShowColumnFilters = _filtered.Length > 0;
 
         void Filter(ProcessColumn which, string text)

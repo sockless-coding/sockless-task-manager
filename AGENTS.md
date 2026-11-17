@@ -114,14 +114,35 @@ src/SocklessTaskManager/
                         - "Windows' own" (hidden by default) means signed by Microsoft as part of Windows, not
                           just a Microsoft company name; Windows' own entries in critical categories (drivers,
                           Winlogon, boot, LSA, network, print, AppInit) can't be changed here.
+    Apps/               a top-level feature: everything installed, however it was installed. Sources/ reads each
+                        way: the uninstall registry (InstalledPrograms: HKLM 64/32-bit and HKCU, told apart as
+                        Windows Installer, Inno Setup, NSIS, InstallShield, WiX bundle, Squirrel, ClickOnce, Steam,
+                        winget portable), MSIX packages (PackagedApps: Windows.Management.Deployment by vtable,
+                        WinRt.cs; slots and IIDs from the SDK's winrt headers), Scoop and Chocolatey from their
+                        folders (PackageManagers), and optional features and Windows features (OptionalFeatures:
+                        dismapi.dll, administrators only, structs read by offset). AppScanner publishes as each
+                        source answers and keeps DISM's answer until Refresh, since it's slow and loads a lot.
+                        Each app is uninstalled, changed or repaired the way it was installed (AppActions): msiexec
+                        with the product code, the bundle's /modify and /repair, RemovePackageAsync, DISM, or the
+                        package manager in a console. Things to know:
+                        - Many uninstallers hand over to a copy of themselves and exit at once: AppWatcher
+                          (RegNotifyChangeKeyValue, thread-agnostic, on the pool) is how the list learns they
+                          finished. It follows the registry from first show; changes while away rescan on return.
+                        - Frameworks, system components, Windows' own packages and updates are hidden behind
+                          "Components"; Windows' own packages and frameworks can't be uninstalled here.
+                        - An entry whose uninstaller is gone can be removed (a .reg backup first, Core/Backups).
+                        - Only http(s) links from the registry reach the shell.
+                        - The selected app's running processes and size on disk (AppFolder) are read once, on
+                          select; "Show in Processes" uses ProcessQuery.Folder.
     Updates/            not a page: the top bar's update offer. Reads the latest tag from GitHub's /releases/latest
                         redirect, downloads the release zip, checks its .sha256, renames running files to .old and
                         moves the new ones in, then restarts. Local builds are version 0.0.0 and never check;
                         the asset names must match release.yml.
 ```
 
-A slice owns everything it needs: native calls, sensor, view model and view. Slices don't reference each other. Code moves into `Core/` only when a second slice needs it (PDH, `GetPerformanceInfo` and `NtQuerySystemInformation` with its process-list parser are there for that reason, as are `Accounts` (process token owners), `Elevation` and `Confirmation`, shared by Processes and Users, `AddressSpace`, shared by Processes and Memory, `EtwSession` (a real-time ETW session) with the kernel's process-start event, shared by Processes and Network, and `Privileges` (enable a token privilege), shared by Storage and Services, and `CommandLine` (the program in a
-registered command line), shared by Services and Autostart).
+A slice owns everything it needs: native calls, sensor, view model and view. Slices don't reference each other. Code moves into `Core/` only when a second slice needs it (PDH, `GetPerformanceInfo` and `NtQuerySystemInformation` with its process-list parser are there for that reason, as are `Accounts` (process token owners), `Elevation` and `Confirmation`, shared by Processes and Users, `AddressSpace`, shared by Processes and Memory, `EtwSession` (a real-time ETW session) with the kernel's process-start event, shared by Processes and Network, and `Privileges` (enable a token privilege), shared by Storage and Services, `CommandLine` (the program in a
+registered command line), shared by Services, Autostart and Apps, and `Backups` (.reg exports and the backups folders,
+opening Registry Editor at a key), shared by Autostart and Apps).
 
 When one slice needs to show another's page, it goes through `Core/Navigator.cs`: Users and Memory call `ShowProcesses(new ProcessQuery(...))`, the Processes feature applies it and calls `Open(this)`, and the shell selects it. Pages may list processes in their own terms (shares of memory, a user's processes), but a process's details, actions and drill-downs live only on the Processes page: a row elsewhere opens it there rather than growing details of its own. If a page needs more than `ProcessQuery` offers, add it there.
 

@@ -9,7 +9,8 @@ namespace Sockless.TaskManager.Core;
 /// <param name="SessionId">Only processes in this session.</param>
 /// <param name="ProcessId">Open this process's details; the list's filters are left as they are.</param>
 /// <param name="CreateTime">With <paramref name="ProcessId"/>: FILETIME (UTC), so a reused id doesn't open another process.</param>
-public sealed record ProcessQuery(string? User = null, int? SessionId = null, int? ProcessId = null, long CreateTime = 0);
+/// <param name="Folder">Only processes whose program is in this folder or under it (an app's install folder).</param>
+public sealed record ProcessQuery(string? User = null, int? SessionId = null, int? ProcessId = null, long CreateTime = 0, string? Folder = null);
 
 /// <summary>
 /// Moves between pages without slices knowing each other. A page asks for processes with

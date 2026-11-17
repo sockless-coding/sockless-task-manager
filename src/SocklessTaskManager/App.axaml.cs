@@ -2,6 +2,7 @@ using Avalonia;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Markup.Xaml;
 using Sockless.TaskManager.Core;
+using Sockless.TaskManager.Features.Apps;
 using Sockless.TaskManager.Features.Autostart;
 using Sockless.TaskManager.Features.Memory;
 using Sockless.TaskManager.Features.Network;
@@ -38,6 +39,7 @@ public sealed class App : Application
                 new UsersFeature(clock, navigator),
                 new ServicesFeature(clock, navigator),
                 new AutostartFeature(),
+                new AppsFeature(navigator),
             ];
 
             var shell = new ShellViewModel(clock, navigator, features, new Updater(), Elevation.StartPage(desktop.Args ?? []));
